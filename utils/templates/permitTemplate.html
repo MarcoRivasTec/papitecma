@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es-ES">
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta charset="utf-8" />
+		<title>Solicitud TECMA</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				/* padding: 30px; */
+				/* border: 3px solid black; */
+				margin: 5px;
+				height: "auto";
+				justify-content: center;
+				align-items: center;
+			}
+
+			div.solicitud,
+			div.acuse {
+				margin: 0px;
+				padding: 30px;
+				border: 3px solid black;
+				box-sizing: border-box;
+				justify-content: flex-start;
+				align-items: center;
+			}
+
+			div.solicitud {
+				height: 670px;
+			}
+
+			div.acuse {
+				height: 310px;
+				margin-top: 10px;
+			}
+
+			p.folio {
+				text-align: right;
+				/* margin-right: 30px; */
+				font-size: 12pt;
+			}
+			p.razon {
+				text-align: center;
+				font-size: 12pt;
+				margin: 0;
+			}
+			p.carta {
+				text-align: center;
+				font-size: 14pt;
+				margin: 8px;
+			}
+			p.fecha {
+				text-align: right;
+				font-size: 12pt;
+				margin-top: 20px;
+				text-decoration: underline;
+			}
+
+			p.acuse {
+				text-align: center;
+				font-size: 12pt;
+				margin: 0;
+				margin-bottom: -10px;
+			}
+
+			table {
+				margin-top: 20px;
+				width: 100%;
+				border-collapse: collapse;
+			}
+
+			th,
+			td {
+				width: 25%;
+				text-align: center;
+				padding: 3px 0 1px 0;
+				font-size: 11px;
+				/* font-size: 12pt; */
+			}
+
+			th {
+				background-color: #0d6a6f; /* Teal color */
+				color: white;
+				border-bottom: 2px solid black;
+			}
+
+			.ajuste-solicitado-table {
+				width: 80%;
+				margin: 0 auto;
+				margin-top: 20px;
+				border-collapse: collapse;
+				border: 1px solid black;
+			}
+
+			.ajuste-solicitado-table th {
+				background-color: #ff5500;
+				color: white;
+				font-size: 11pt;
+				text-align: center;
+				padding: 2px 0 1px 0;
+			}
+
+			.ajuste-solicitado-table td {
+				width: 33%;
+				padding: 2px 6px 2px 6px;
+				text-align: left;
+				font-size: 9pt;
+				font-family: "Courier New", Courier, monospace;
+			}
+
+			.ajuste-solicitado-table td:last-child {
+				text-align: right;
+			}
+
+			p.comentarios-title {
+				text-align: left;
+				font-size: 12pt;
+			}
+
+			p.comentarios-text {
+				font-family: "Courier New", Courier, monospace;
+				text-align: justify;
+				font-size: 11pt;
+				/* border: 2px solid black; */
+				/* height: 50px; */
+				margin: 0;
+				margin-top: -10px;
+				overflow: hidden;
+				word-wrap: break-word;
+			}
+
+			p.firma-empleado {
+				margin: 0;
+			}
+
+			@media print {
+				@page {
+					margin: 30px;
+				}
+
+				div.solicitud,
+				div.acuse {
+					margin: 0px;
+					padding: 30px;
+					border: 3px solid black;
+					box-sizing: border-box;
+				}
+
+				div.acuse {
+					margin-top: 10px;
+				}
+
+				body {
+					margin: 0;
+					padding: 0px;
+					/* border: 3px solid black; */
+					/* box-sizing: border-box; */
+				}
+				th {
+					/* background-color: #0d6a6f !important; Ensure background color stays on print */
+					-webkit-print-color-adjust: exact; /* Webkit-specific print color adjustment */
+					print-color-adjust: exact;
+				}
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="solicitud">
+			<div>
+				<img
+					src="data:image/png;base64,{{imageBase64}}"
+					height="50"
+					style="width: auto; position: absolute"
+					alt=""
+				/>
+			</div>
+			<div style="margin-top: 60px">
+				<p class="folio"><em>Folio: {{folio}}</em></p>
+				<p class="razon"><strong>{{razon_social}}</strong></p>
+				<p class="carta">
+					<em><strong>Solicitud de Días de Permiso</strong></em>
+				</p>
+				<p class="fecha">Fecha: {{fecha}}</p>
+			</div>
+			<table>
+				<thead>
+					<tr>
+						<th>Numero</th>
+						<th>Nombre</th>
+						<th>Planta</th>
+						<th>Proyecto</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>{{numEmp}}</td>
+						<td>{{name}}</td>
+						<td>{{plant_id}}</td>
+						<td>{{project}}</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<table class="ajuste-solicitado-table">
+				<thead>
+					<tr>
+						<th colspan="3">Detalle de Solicitud</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>Días Solicitados</td>
+						<td>{{days}}</td>
+					</tr>
+					<tr>
+						<td>Fecha Inicio</td>
+						<td>{{fecha_inicio}}</td>
+					</tr>
+					<tr>
+						<td>Fecha Regreso</td>
+						<td>{{fecha_fin}}</td>
+					</tr>
+					<tr>
+						<td>Tipo</td>
+						<td>
+							{{#if (eq motive "TRA")}}Trámite / Cita{{else}}{{#if (eq motive
+							"MAT")}}Matrimonio{{else}}{{#if (eq motive "PER")}}Asunto
+							Personal{{else}}{{#if (eq motive "NAC")}}Nacimiento
+							hijo(a){{/if}}{{/if}}{{/if}}{{/if}}
+						</td>
+					</tr>
+				</tbody>
+			</table>
+			<div style="margin-top: 20px; height: 90px">
+				<p class="comentarios-title">Comentarios:</p>
+				<p class="comentarios-text">{{coment}}</p>
+			</div>
+			<div style="margin-top: 40px; text-align: center">
+				<div style="display: flex; justify-content: space-evenly; margin: 0">
+					<div style="text-align: center; width: 35%">
+						<hr style="border-top: 1px solid black; width: 100%" />
+						<p style="margin: 0">Firma del Empleado</p>
+					</div>
+					<div style="text-align: center; width: 35%">
+						<hr style="border-top: 1px solid black; width: 100%" />
+						<p style="margin: 0">Firma del Supervisor</p>
+					</div>
+				</div>
+				<div style="text-align: center; margin-top: 40px">
+					<hr style="border-top: 1px solid black; width: 50%" />
+					<p style="margin: 0">{{nombre_rh}}<br />Recursos Humanos</p>
+				</div>
+			</div>
+		</div>
+		<div class="acuse">
+			<p class="acuse">
+				<strong><em>ACUSE DE RECIBO - DÍAS PERMISO -</em></strong>
+			</p>
+			<table>
+				<thead>
+					<tr>
+						<th>Numero</th>
+						<th>Nombre</th>
+						<th>Planta</th>
+						<th>Proyecto</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>{{numEmp}}</td>
+						<td>{{name}}</td>
+						<td>{{plant_id}}</td>
+						<td>{{project}}</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<table class="ajuste-solicitado-table">
+				<thead>
+					<tr>
+						<th colspan="3">Ajuste Solicitado</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>Días Solicitados</td>
+						<td>{{days}}</td>
+					</tr>
+					<tr>
+						<td>Fecha Inicio</td>
+						<td>{{fecha_inicio}}</td>
+					</tr>
+					<tr>
+						<td>Fecha Regreso</td>
+						<td>{{fecha_fin}}</td>
+					</tr>
+					<tr>
+						<td>Tipo</td>
+						<td>
+							{{#if (eq motive "TRA")}}Trámite / Cita{{else}}{{#if (eq motive
+							"MAT")}}Matrimonio{{else}}{{#if (eq motive "PER")}}Asunto
+							Personal{{else}}{{#if (eq motive "NAC")}}Nacimiento
+							hijo(a){{/if}}{{/if}}{{/if}}{{/if}}
+						</td>
+					</tr>
+				</tbody>
+			</table>
+			<div style="text-align: center; margin-top: 40px">
+				<hr style="border-top: 1px solid black; width: 50%" />
+				<p style="margin: 0">{{nombre_rh}}<br />Recursos Humanos</p>
+			</div>
+		</div>
+	</body>
+</html>

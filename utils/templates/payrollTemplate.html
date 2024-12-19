@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="es-ES">
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta charset="utf-8" />
+		<title>Recibo de Nómina</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				/* padding: 30px; */
+				/* border: 3px solid black; */
+				margin: 10px;
+				height: "auto";
+				justify-content: center;
+				align-items: center;
+			}
+			.company-info p {
+				text-align: left;
+				font-size: 10pt;
+				margin: 0;
+				margin-top: 8px;
+			}
+
+			table {
+				margin-top: 5px;
+				width: 100%;
+				border-collapse: collapse;
+			}
+
+			th,
+			td {
+				/* width: 25%; */
+				text-align: center;
+				padding: 3px 0 1px 0;
+				font-size: 10px;
+				/* font-size: 12pt; */
+				/* border: 1px solid black; */
+			}
+
+			th {
+				background-color: #0d6a6f; /* Teal color */
+				color: white;
+			}
+
+			/* td {
+				border: 2px solid black;
+			} */
+
+			/* First Table */
+			table:nth-of-type(1) thead th:nth-child(1) {
+				width: 20%;
+			}
+			table:nth-of-type(1) thead th:nth-child(2) {
+				width: 30%;
+			}
+			table:nth-of-type(1) thead th:nth-child(3) {
+				width: 25%;
+			}
+			table:nth-of-type(1) thead th:nth-child(4) {
+				width: 25%;
+			}
+			table:nth-of-type(1) tbody td:nth-child(1) {
+				width: 20%;
+			}
+			table:nth-of-type(1) tbody td:nth-child(2) {
+				width: 30%;
+			}
+			table:nth-of-type(1) tbody td:nth-child(3) {
+				width: 25%;
+			}
+			table:nth-of-type(1) tbody td:nth-child(4) {
+				width: 25%;
+			}
+
+			/* Second table */
+			table:nth-of-type(2) th,
+			table:nth-of-type(2) td {
+				width: 20%;
+			}
+
+			table:nth-of-type(2) thead th:nth-child(1) {
+				width: 25%;
+			}
+
+			table:nth-of-type(2) thead th:nth-child(2) {
+				width: 15%;
+			}
+
+			table:nth-of-type(2) tbody td:nth-child(1) {
+				width: 25%;
+			}
+
+			table:nth-of-type(2) tbody td:nth-child(2) {
+				width: 15%;
+			}
+
+			/* Third table */
+			table:nth-of-type(3) thead th:nth-child(1) {
+				width: 25%;
+			}
+			table:nth-of-type(3) thead th:nth-child(2) {
+				width: 30%;
+			}
+			table:nth-of-type(3) tbody th:nth-child(3) {
+				width: 20%;
+			}
+			table:nth-of-type(3) tbody th:nth-child(4) {
+				width: 25%;
+			}
+			table:nth-of-type(3) tbody td:nth-child(1) {
+				width: 25%;
+			}
+			table:nth-of-type(3) tbody td:nth-child(2) {
+				width: 30%;
+			}
+			table:nth-of-type(3) tbody td:nth-child(3) {
+				width: 20%;
+			}
+			table:nth-of-type(3) tbody td:nth-child(4) {
+				width: 25%;
+			}
+
+			.percepciones-deducciones-container {
+				/* width: "100%"; */
+				display: flex;
+				justify-content: center;
+				align-items: stretch;
+				margin-top: 20px;
+			}
+
+			.percepciones-table,
+			.deducciones-table {
+				/* min-height: 100%; */
+				width: 50%;
+				border-collapse: collapse;
+				border: 1px solid black;
+				display: flex;
+				flex-direction: column;
+				height: "100%";
+				/* justify-content: flex-end; */
+				/* min-height: 300px */
+			}
+
+			.percepciones-table tbody,
+			.deducciones-table tbody {
+				flex-grow: 1;
+				display: block;
+			}
+
+			.percepciones-table th,
+			.deducciones-table th {
+				/* height: 20px; */
+				background-color: #ff5500; /* Orange color similar to your image */
+				color: white;
+				font-size: 12pt;
+				/* padding-top: 6px; */
+				/* padding-bottom: 2px; */
+				text-align: center;
+				border-bottom: 2px solid black;
+			}
+
+			.percepciones-table td,
+			.deducciones-table td {
+				/* height: 10px; */
+				padding: 2px 0px 2px 4px;
+				/* padding-top: 2px; */
+				/* padding-bottom: 2px; */
+				text-align: left;
+				font-size: 9pt;
+				font-family: "Courier New", Courier, monospace;
+				/* border: 2px solid black; */
+			}
+
+			.percepciones-table td:last-child,
+			.deducciones-table td:last-child {
+				width: "100%";
+				padding: 2px 4px 2px 10px;
+				text-align: right;
+			}
+
+			/* .deducciones-table tbody td:last-child {
+				text-align: right !important;
+			} */
+
+			.totals-row {
+				display: flex;
+				justify-content: space-between;
+				padding-top: 6px;
+				padding-bottom: 2px;
+				background-color: #e6e6e6; /* Light grey color similar to the one in the image */
+				border-top: 1px solid black;
+				font-size: 10pt;
+				font-weight: bold;
+				font-family: Arial, sans-serif;
+			}
+
+			.total-percepciones,
+			.total-deducciones {
+				padding-left: 4px;
+				width: 50%; /* Adjust as needed for alignment */
+				display: flex;
+				justify-content: space-between; /* Align text and amount */
+			}
+
+			.amount {
+				padding-right: 4px;
+				font-weight: normal; /* Make the actual amounts not bold */
+				text-align: right; /* Align the amount to the right */
+				margin-left: auto; /* Push the amount to the far right of its container */
+			}
+
+			.total-neto-row {
+				display: flex;
+				justify-content: space-between;
+				padding-top: 6px;
+				padding-bottom: 2px;
+				background-color: #ff5500; /* Orange background */
+				color: white;
+				font-size: 12pt;
+				font-weight: bold;
+				font-family: Arial, sans-serif;
+				margin-top: 40px; /* Space above the net total row */
+				width: 50%; /* Adjust the width as needed */
+				margin-left: auto; /* Align the entire box to the right */
+			}
+
+			.total-neto-text {
+				margin-left: 4px;
+				text-align: left;
+			}
+
+			.total-neto-amount {
+				margin-right: 4px;
+				text-align: right;
+			}
+
+			.summary-text {
+				margin-top: 40px;
+				font-size: 8pt;
+				text-align: justify;
+				width: 75%; /* Adjust width as needed */
+				margin-left: 0; /* Align it to the left side of the page */
+			}
+
+			.savings-table-container {
+				margin-top: 20px;
+				width: 50%; /* Set the container to 50% width */
+				margin-left: 0; /* Align container to the left */
+			}
+
+			.savings-table {
+				width: 100%; /* Make the table fill the container width */
+				border-collapse: collapse;
+			}
+
+			.savings-table td,
+			.savings-table th {
+				width: 33.33%;
+				padding-top: 6px;
+				padding-bottom: 2px;
+				text-align: center;
+				font-size: 10pt;
+				background-color: #ff5500; /* Orange background */
+				color: white;
+			}
+
+			.savings-table th {
+				background-color: white; /* Orange background */
+				color: black;
+				font-size: 9pt;
+			}
+
+			.accumulated-table-container {
+				margin-top: 15px;
+				width: 50%; /* Set the container to 50% width */
+				margin-left: 0; /* Align container to the left */
+				margin-bottom: 0;
+			}
+
+			.accumulated-table {
+				width: 100%; /* Make the table fill the container width */
+				border-collapse: collapse;
+			}
+
+			.accumulated-table th,
+			.accumulated-table td {
+				width: 50%; /* Set each cell to take up 50% of the table width */
+				padding-top: 6px;
+				padding-bottom: 2px;
+				text-align: center;
+				font-size: 10pt;
+				background-color: #ff5500; /* Orange background for consistency */
+				color: white;
+			}
+
+			.accumulated-table th {
+				background-color: white;
+				color: black;
+				font-size: 9pt;
+			}
+
+			.hours-table-container {
+				margin-top: 0px;
+				width: 50%; /* Set the container to 50% width */
+				margin-left: auto; /* Align container to the right */
+			}
+
+			.hours-table {
+				width: 100%; /* Make the table fill the container width */
+				border-collapse: collapse;
+			}
+
+			.hours-table thead th {
+				background-color: #0d6a6f; /* Teal background for the main header */
+				color: white;
+				padding-top: 6px;
+				padding-bottom: 2px;
+				text-align: center;
+				font-size: 9pt;
+			}
+
+			.hours-table thead td,
+			.hours-table tbody th {
+				width: 33.33%; /* Set each cell to take up an equal portion of the table width */
+				padding-top: 6px;
+				padding-bottom: 2px;
+				text-align: center;
+				font-size: 10pt;
+				background-color: #0d6a6f; /* Teal background for the labels and headers */
+				color: white;
+				/* border: 1px solid black; */
+			}
+
+			.hours-table thead td {
+				background-color: white; /* Light grey background for value cells */
+				color: black;
+				font-size: 10pt;
+			}
+
+			.total-percepciones,
+			.total-deducciones,
+			.total-neto-text,
+			.total-neto-amount,
+			.savings-table th,
+			.accumulated-table th,
+			.hours-table th {
+				font-weight: normal;
+			}
+
+			@media print {
+				@page {
+					margin: 30px;
+				}
+
+				body {
+					margin: 10px;
+					padding: 0px;
+					/* border: 3px solid black; */
+					/* box-sizing: border-box; */
+				}
+				th {
+					/* background-color: #0d6a6f !important; Ensure background color stays on print */
+					-webkit-print-color-adjust: exact; /* Webkit-specific print color adjustment */
+					print-color-adjust: exact;
+				}
+
+				.totals-row,
+				.total-neto-row,
+				.accumulated-table,
+				.savings-table {
+					-webkit-print-color-adjust: exact; /* Webkit-specific print color adjustment */
+					print-color-adjust: exact;
+				}
+			}
+		</style>
+	</head>
+
+	<body>
+		<div>
+			<img
+				src="data:image/png;base64,{{imageBase64}}"
+				height="50"
+				style="width: auto; position: absolute; right: 0; top: 40px"
+				alt=""
+			/>
+		</div>
+		<!-- src="data:image/png;base64,{{imageBase64}}" -->
+		<div class="company-info">
+			<p style="font-size: 12pt">
+				<em><strong>{{razon_social}}</strong></em>
+			</p>
+			<p style="font-size: 10pt">{{calle}}, #{{num_ext}}, {{colonia}}</p>
+			<p style="font-size: 9pt">
+				{{ciudad}}, {{entidad}}, C.P. {{codigo_postal}}
+			</p>
+			<p style="font-size: 9pt">
+				RFC: {{rfc_razon}} REG. PATRONAL: {{registro_patronal}}
+			</p>
+			<p style="text-align: right">RECIBO DE NÓMINA</p>
+		</div>
+
+		<table style="margin-top: 20px">
+			<thead>
+				<tr>
+					<th>Número</th>
+					<th>Nombre</th>
+					<th>RFC</th>
+					<th>IMSS</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td>{{numEmp}}</td>
+					<td>{{nombre}}</td>
+					<td>{{rfc}}</td>
+					<td>{{seguro_social}}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<table>
+			<thead>
+				<tr>
+					<th>Periodo</th>
+					<th>Semana</th>
+					<th>Fecha Pago</th>
+					<th>Fecha Ingreso</th>
+					<th>Planta</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td>{{periodo}}</td>
+					<td>{{week}}</td>
+					<td>{{fecha_pago}}</td>
+					<td>{{fecha_ingreso}}</td>
+					<td>{{planta}}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<table>
+			<thead>
+				<tr>
+					<th>CURP</th>
+					<th>Puesto</th>
+					<th>Salario Diario</th>
+					<th>Turno</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td>{{curp}}</td>
+					<td>{{puesto}}</td>
+					<td>${{salario}}</td>
+					<td>{{turno}}</td>
+				</tr>
+			</tbody>
+		</table>
+
+		<div class="percepciones-deducciones-container">
+			<table class="percepciones-table">
+				<thead>
+					<tr>
+						<th colspan="2">Percepciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{{percepcionesRows}}}
+				</tbody>
+			</table>
+
+			<table class="deducciones-table">
+				<thead>
+					<tr>
+						<th colspan="2">Deducciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					{{{deduccionesRows}}}
+				</tbody>
+			</table>
+		</div>
+
+		<div class="totals-row">
+			<div class="total-percepciones">
+				<span>Total Percepciones:</span>
+				<span class="amount">${{total_percepciones}}</span>
+			</div>
+			<div class="total-deducciones">
+				<span>Total Deducciones:</span>
+				<span class="amount">${{total_deducciones}}</span>
+			</div>
+		</div>
+
+		<div class="total-neto-row">
+			<span class="total-neto-text">Total Neto:</span>
+			<span class="total-neto-amount">${{total_neto}}</span>
+		</div>
+
+		<div class="summary-text">
+			Recibí de {{razon_social}} la Cantidad anotada en Total de Percepciones
+			por concepto de mi salario que incluye el importe de las horas ordinarias
+			y extraordinarias, séptimo día, días festivos y demás percepciones
+			correspondientes al período que termina hoy sin que a la fecha se me
+			adeude ninguna cantidad por cualquier otro concepto, habiéndoseme hecho
+			los descuentos de ley y los convenidos particularmente.
+		</div>
+
+		<div class="savings-table-container">
+			<table class="savings-table">
+				<tr>
+					<td>${{ahorro}}</td>
+					<td>${{ahorro}}</td>
+					<td>${{ahorro_total}}</td>
+				</tr>
+				<tr>
+					<th>Ahorro Empleado</th>
+					<th>Ahorro Empresa</th>
+					<th>TOTAL</th>
+				</tr>
+			</table>
+		</div>
+
+		<div class="accumulated-table-container">
+			<table class="accumulated-table">
+				<tr>
+					<th>Acumulado Caja Ahorro</th>
+					<td>${{acumulado_ahorro}}</td>
+				</tr>
+			</table>
+		</div>
+
+		<div class="hours-table-container">
+			<table class="hours-table">
+				<thead>
+					<tr>
+						<th colspan="3">HORAS</th>
+					</tr>
+					<tr>
+						<td>{{horas_ordinarias}} hrs.</td>
+						<td>{{horas_extras}} hrs.</td>
+						<td>{{horas_festivo}} hrs.</td>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<th>Ordinarias</th>
+						<th>Extras</th>
+						<th>Festivo</th>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</body>
+</html>

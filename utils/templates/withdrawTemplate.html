@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es-ES">
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta charset="utf-8" />
+		<title>Retiro de Ahorro</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				/* padding: 30px; */
+				/* border: 3px solid black; */
+				margin: 10px;
+				height: "auto";
+				justify-content: center;
+				align-items: center;
+			}
+
+			p {
+				font-size: 10pt;
+			}
+
+			.company-info p {
+				text-align: left;
+				margin: 0;
+				margin-top: 8px;
+			}
+
+			.company-info div {
+				margin-top: 30px;
+			}
+
+			p.date {
+				margin-top: 60px;
+				text-align: right;
+			}
+
+			p.title {
+				margin-top: 40px;
+				text-align: center;
+				font-weight: bold;
+				font-size: 12pt;
+			}
+
+			p.receiver {
+				margin-top: 60px;
+				text-align: left;
+			}
+
+			p.sender {
+				margin-top: 20px;
+				text-align: left;
+				font-weight: bold;
+			}
+
+			p.reason {
+				margin-top: 60px;
+				text-align: justify;
+				line-height: 1.5;
+			}
+
+			div.signed {
+				margin-top: 60px;
+			}
+
+			p.signed-data {
+				margin-top: 6px;
+				margin-bottom: 6px;
+			}
+
+			.authorized {
+				margin-top: 50px;
+			}
+
+			label {
+				font-size: 10pt;
+			}
+
+			.input-underline {
+				border: none;
+				border-bottom: 1px solid black;
+				width: 180px; /* Adjust width as needed */
+				outline: none;
+				font-size: 16px;
+			}
+
+			@media print {
+				@page {
+					margin: 30px;
+				}
+
+				body {
+					margin: 10px;
+					padding: 0px;
+					/* border: 3px solid black; */
+					/* box-sizing: border-box; */
+				}
+			}
+		</style>
+	</head>
+
+	<body>
+		<div>
+			<img
+				src="data:image/png;base64,{{imageBase64}}"
+				height="35"
+				alt=""
+				style="margin: 0"
+			/>
+		</div>
+		<div class="company-info">
+			<div>
+				<p style="font-size: 12pt">
+					<em><strong>{{razon_social}}</strong></em>
+				</p>
+				<p style="font-size: 10pt">
+					{{calle}}, #{{num_ext}}, {{colonia}}, C.P. {{codigo_postal}}
+				</p>
+
+				<p style="font-size: 9pt">Tel. {{tel_empresa}}</p>
+			</div>
+		</div>
+		<p class="date">{{ciudad}}, {{entidad}} a {{fecha}}</p>
+		<p class="title">RENUNCIA AL FONDO DE AHORRO</p>
+		<p class="receiver">Para: Comité del Fondo de Ahorro IMS</p>
+		<p class="sender">De: {{name}}</p>
+		<p class="reason">
+			Por medio de la presente les manifiesto mi deseo voluntario de retirarme
+			del presente ejercicio al fondo de ahorro por así convenir a mis intereses
+		</p>
+		<div class="signed">
+			<p class="signed-data">
+				Firmado electrónicamente por el Empleado el día: {{fecha_det}}
+			</p>
+			<p class="signed-data">No. Empleado: {{numEmp}}</p>
+			<p class="signed-data">Planta: {{plant_id}}</p>
+			<p class="signed-data">Proyecto: {{project}}</p>
+		</div>
+		<!-- <p class="authorized">Autorizado por:</p> -->
+		<div class="authorized">
+			<label for="authorized">Autorizado por:</label>
+			<input type="text" id="authorized" class="input-underline" />
+		</div>
+
+		<div class="authorized" style="margin-top: 80px">
+			<input type="text" id="authorized" class="input-underline" />
+		</div>
+		<p class="signed-data">Enterado</p>
+		<p class="signed-data">Departamento Recursos Humanos</p>
+	</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es-ES">
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta charset="utf-8" />
+		<title>Solicitud TECMA</title>
+		<style>
+			body {
+				font-family: Calibri, sans-serif;
+				padding: 0 50px 0 50px;
+			}
+
+			p {
+				margin: 0pt;
+			}
+
+			@media (max-width: 900px) {
+				img {
+					max-width: 100%;
+					height: auto;
+				}
+
+				.table-container {
+					overflow-x: auto;
+					-webkit-overflow-scrolling: touch;
+				}
+
+				table {
+					width: 100%;
+					border-collapse: collapse;
+				}
+
+				td,
+				th {
+					padding: 8px;
+					text-align: left;
+				}
+				td.first-column p {
+					text-align: right;
+					color: #5f5f5f;
+					/* font-family: Calibri, sans-serif; */
+				}
+				td.second-column p {
+					text-align: justify;
+					/* font-family: Calibri, sans-serif; */
+					font-size: 11pt;
+				}
+			}
+		</style>
+	</head>
+
+	<body>
+		<table style="margin-top: 20pt">
+			<tbody>
+				<tr style="height: 656.6pt">
+					<td
+						class="first-column"
+						style="
+							width: 100pt;
+							padding-right: 35pt;
+							padding-left: 0pt;
+							vertical-align: top;
+						"
+					>
+						<p style="margin-top: 25pt">
+							<img
+								src="data:image/png;base64,{{imageBase64}}"
+								width="183"
+								height="52"
+								alt=""
+							/>
+						</p>
+						<p style="margin-top: 45pt">
+							<strong>{{razon_social}}</strong>
+						</p>
+						<p style="font-size: 11pt; margin-top: 12pt">
+							{{calle}} #{{num_ext}}, {{colonia}}, {{codigo_postal}}
+						</p>
+						<p style="font-size: 11pt; margin-top: 12pt">
+							{{ciudad}}, {{entidad}}, Mexico
+						</p>
+						<p style="margin-top: 10pt">
+							Tel:&nbsp;<strong>656 649 1000</strong>
+						</p>
+						<p style="font-size: 10pt; margin-top: 12pt">
+							RFC:&nbsp;<strong>{{rfc_razon}}</strong>
+						</p>
+						<p style="font-size: 10pt; margin-top: 12pt">
+							REG. PATRONAL:&nbsp;
+							<strong>{{registro_patronal}}</strong>
+						</p>
+					</td>
+					<td
+						class="second-column"
+						style="width: 324.85pt; vertical-align: top"
+					>
+						<p style="margin-top: 55pt; text-align: right">
+							<strong>{{ciudad}}, {{entidad}}, a {{fecha}}</strong>
+						</p>
+						<p style="margin-top: 47pt">
+							<strong
+								>{{#if (eq tipo "CartaVisa")}} Consulado de los Estados Unidos
+								de Norteamérica
+								<p>De los Estados Unidos de Norteamérica</p>
+								{{else}}{{#if (eq tipo "CartaPermiso")}} Servicio de Inmigración
+								y Control de Aduanas de los Estados Unidos de Norteamérica
+								<p>De los Estados Unidos de Norteamérica</p>
+								{{else}}A quien corresponda:{{/if}}{{/if}}</strong
+							>
+						</p>
+
+						<p style="margin-top: 40pt">
+							Por medio de la presente hacemos constar que el Sr(a)&nbsp;<strong
+								>{{ape_paterno}} {{ape_materno}}, {{nombres}}</strong
+							>&nbsp;quien labora para esta empresa desde el
+							d&iacute;a&nbsp;<strong>{{antiguedad}}</strong>&nbsp;desempeñándose
+							como&nbsp;<strong>{{puesto}}</strong>&nbsp;en un horario de
+							<strong>{{jornada}}</strong> {{#if (orEquals tipo "CartaPrestamo"
+							"CartaVisa")}}con un ingreso mensual de <strong>${{salario_mensual}}
+							({{salario_mensual_letra}})</strong>{{else}}contando con un periodo
+							vacacional anual{{/if}}.
+						</p>
+						<p style="margin-top: 40pt">
+							RFC:&nbsp;<strong>{{rfc_emp}}</strong>
+						</p>
+						<p style="margin-top: 16pt">
+							IMSS:&nbsp;
+							<strong>{{seguro_social}}</strong>
+						</p>
+						<p style="margin-top: 40pt; text-indent: 34pt">
+							Sin otro particular por el momento, y agradeciendo de antemano las
+							atenciones que se sirvan prestar a la presente, quedamos de
+							ustedes.&nbsp;
+						</p>
+
+						<p style="margin-top: 150pt; text-align: center">
+							<strong>A T E N T A M E N T E:</strong>
+						</p>
+						<p style="text-align: center; margin-top: 50pt">
+							<strong>____________________________</strong>
+						</p>
+						<p style="text-align: center">
+							<strong>{{nombre_rh}}</strong>
+						</p>
+						<p style="text-align: center">
+							<strong>Departamento de Recursos Humanos</strong>
+						</p>
+					</td>
+				</tr>
+			</tbody>
+		</table>
+	</body>
+</html>
