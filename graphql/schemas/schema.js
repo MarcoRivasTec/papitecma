@@ -242,26 +242,9 @@ const typeDefs = gql`
 		respuesta: String! # Answer value
 	}
 
-	input QRInput {
-		numEmp: Int!
-		region: String!
-	}
-
 	type Response {
 		success: Boolean! # Indicates success or failure
 		message: String! # Success or error message
-	}
-
-	type ResponseData {
-		success: Boolean! # Indicates success or failure
-		message: String! # Success or error message
-		data: EmployeeData
-	}
-
-	type EmployeeData {
-		ingreso: Date!
-		imss: String!
-		qr: String!
 	}
 
 	type Query {
@@ -357,7 +340,6 @@ const typeDefs = gql`
 		): payrollPDF!
 		submitSurvey(input: SubmitSurveyInput!): Response!
 		submitOpinion(input: OpinionInput!): Response!
-		requestQRData(input: QRInput!): ResponseData!
 		testMutation: String
 	}
 `;

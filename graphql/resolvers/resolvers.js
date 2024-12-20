@@ -1025,7 +1025,7 @@ const resolvers = {
 				return "Not found";
 			}
 
-			const launchDate = new Date(2024, 12, 20);
+			const launchDate = new Date(2025, 01, 10);
 			const lastLoginDate = new Date(employeeData[0].login_date);
 
 			if (lastLoginDate > launchDate) {
@@ -2132,6 +2132,7 @@ const resolvers = {
 			console.log("Data is: ", success, pdfName);
 			return { success, pdfData, pdfName };
 		},
+
 		submitSurvey: async (_, { input }) => {
 			const { encuesta, region, numEmp, data } = input;
 			const dbs = await selectRegion(region);
@@ -2244,50 +2245,6 @@ const resolvers = {
 				success: true,
 				message: "Opinion registered correctly",
 			};
-		},
-		requestQRData: async (_, { input }) => {
-			console.log("Received request");
-			const { numEmp, region } = input;
-			const dbs = await selectRegion(region);
-
-			// Validate the input
-			if (!numEmp || !region) {
-				return {
-					success: false,
-					message: "Input is invalid. Please provide all required fields.",
-				};
-			}
-
-			try {
-				// Construct the SQL query
-				const query = `SELECT 
-									CB_SEGSOC As imss, 
-									CB_FEC_ING As ingreso
-								FROM COLABORA
-								WHERE CB_CODIGO = '${numEmp}'`;
-
-				// console.log("Query is: ", JSON.stringify(query, null, 1));
-
-				// Execute the query
-				const data = await executeQuery(
-					query,
-					"Error querying employee info",
-					dbs.colabora
-				);
-
-				// console.log("Obtained data is: ", data);
-				return {
-					success: true,
-					message: "Information sent",
-					data: { ...data[0], qr: "https://tecmamovil.com" },
-				};
-			} catch (error) {
-				console.error("Error while querying employee info:", error);
-				return {
-					success: false,
-					message: "An error occurred while obtaining information.",
-				};
-			}
 		},
 		testMutation: async () => {
 			const numEmp = 99999110;

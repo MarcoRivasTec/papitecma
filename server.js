@@ -1,10 +1,6 @@
 require("dotenv").config();
 const express = require("express");
-const https = require("https");
 const { ApolloServer } = require("apollo-server-express");
-// const {
-// 	ApolloServerPluginLandingPageGraphQLPlayground,
-// } = require("@apollo/server-plugin-landing-page-graphql-playground");
 const typeDefs = require("./graphql/schemas/schema");
 const resolvers = require("./graphql/resolvers/resolvers");
 const { poolPromises } = require("./config/dbConfig");
@@ -16,16 +12,6 @@ const jwt = require("jsonwebtoken");
 const app = express();
 const port = 8083;
 const subdomain = "papitecma";
-
-const homeHost = getWiFiIPAddressHost();
-const tecmaHost = getTecmaVPNIPAddressHost();
-console.log("Current WiFi IP Address: ", homeHost);
-console.log("Current TecmaVPN IP Address: ", tecmaHost);
-
-// const sslOptions = {
-// 	key: fs.readFileSync("/path/to/your/privatekey.pem"),
-// 	cert: fs.readFileSync("/path/to/your/certificate.pem"),
-// };
 
 // Middleware to authenticate JWT token
 app.use((req, res, next) => {
@@ -52,7 +38,6 @@ app.use(express.static("public"));
 const server = new ApolloServer({
 	typeDefs,
 	resolvers,
-	// plugins: [ApolloServerPluginLandingPageGraphQLPlayground()], //Switches to Playground instead of Sandbox
 	playground: true,
 	context: async ({ req }) => {
 		const pools = await Promise.all(Object.values(poolPromises));
@@ -80,27 +65,10 @@ server.start().then(() => {
 		next();
 	});
 
-	if (homeHost !== false) {
-		app.listen(port, homeHost, () => {
-			console.log(
-				`Server running at http://${homeHost}:${port}${server.graphqlPath}`
-			);
-		});
-	}
-	if (tecmaHost !== false) {
-		app.listen(port, tecmaHost, () => {
-			console.log(
-				`Server running at http://${tecmaHost}:${port}${server.graphqlPath}`
-			);
-		});
-	}
-	app.listen(port, () => {
+	app.listen(port,() => {
 		console.log(
 			`Server running at http://localhost:${port}${server.graphqlPath}`
 		);
 	});
 
-	// https.createServer(sslOptions, app).listen(port, () => {
-	// 	console.log(`Server running securely at https://tecmamovil.com:${port}/${subdomain}`);
-	// });
 });

@@ -16,9 +16,10 @@ async function generateLetterPDF({ data }) {
 		// Check if the variable matches any of the provided values
 		return args.some((value) => variable === value);
 	});
-
-	// const outputDir = path.join(__dirname, "../pdfs/");
-	// const outputPath = path.join(outputDir, "CartaTrabajo.pdf");
+	// console.log("Data: ", data);
+	// return;
+	const outputDir = path.join(__dirname, "../pdfs/");
+	const outputPath = path.join(outputDir, "CartaTrabajo.pdf");
 
 	const browser = await puppeteer.launch({
 		headless: true,
@@ -41,7 +42,8 @@ async function generateLetterPDF({ data }) {
 	// 	format: "LETTER", // Paper format
 	// 	printBackground: true, // Print CSS backgrounds
 	// });
-
+	// await browser.close();
+	// return;
 	// Generate the PDF as a buffer
 	const pdfUint8Array = await page.pdf({
 		format: "LETTER",
@@ -52,6 +54,13 @@ async function generateLetterPDF({ data }) {
 	await browser.close();
 
 	return Buffer.from(pdfUint8Array);
+
+	console.log(Buffer.isBuffer(pdfBuffer));
+	console.log("After checkingbuffer1");
+
+	console.log(Buffer.isBuffer(pdfBuffer));
+	console.log("After checkingbuffer 2");
+	return pdfBuffer;
 }
 
 async function generateAdjustmentPDF({ data }) {
@@ -125,7 +134,8 @@ async function generatePermitPDF({ data }) {
 		// Check if the variable matches any of the provided values
 		return args.some((value) => variable === value);
 	});
-
+	// console.log("Data: ", data);
+	// return;
 	// const outputDir = path.join(__dirname, "../pdfs/");
 	// const outputPath = path.join(outputDir, `PermisoDias.pdf`);
 
@@ -150,7 +160,8 @@ async function generatePermitPDF({ data }) {
 	// 	format: "LETTER", // Paper format
 	// 	printBackground: true, // Print CSS backgrounds
 	// });
-
+	// await browser.close();
+	// return;
 	// Generate the PDF as a buffer
 	const pdfUint8Array = await page.pdf({
 		format: "LETTER",
@@ -161,6 +172,13 @@ async function generatePermitPDF({ data }) {
 	await browser.close();
 
 	return Buffer.from(pdfUint8Array);
+
+	console.log(Buffer.isBuffer(pdfBuffer));
+	console.log("After checkingbuffer1");
+
+	console.log(Buffer.isBuffer(pdfBuffer));
+	console.log("After checkingbuffer 2");
+	return pdfBuffer;
 }
 
 async function generateVacationsPDF({ data }) {
@@ -175,7 +193,8 @@ async function generateVacationsPDF({ data }) {
 		// Check if the variable matches any of the provided values
 		return args.some((value) => variable === value);
 	});
-
+	// console.log("Data: ", data);
+	// return;
 	// const outputDir = path.join(__dirname, "../pdfs/");
 	// const outputPath = path.join(outputDir, `Vacaciones.pdf`);
 
@@ -200,7 +219,8 @@ async function generateVacationsPDF({ data }) {
 	// 	format: "LETTER", // Paper format
 	// 	printBackground: true, // Print CSS backgrounds
 	// });
-
+	// await browser.close();
+	// return;
 	// Generate the PDF as a buffer
 	const pdfUint8Array = await page.pdf({
 		format: "LETTER",
@@ -211,8 +231,14 @@ async function generateVacationsPDF({ data }) {
 	await browser.close();
 
 	return Buffer.from(pdfUint8Array);
-}
 
+	console.log(Buffer.isBuffer(pdfBuffer));
+	console.log("After checkingbuffer1");
+
+	console.log(Buffer.isBuffer(pdfBuffer));
+	console.log("After checkingbuffer 2");
+	return pdfBuffer;
+}
 // Alta IMSS
 async function generateIMSSPDF({ data }) {
 	// const outputDir = path.join(__dirname, "../pdfs/");
@@ -392,3 +418,10 @@ module.exports = {
 	generateSavingWithdrawPDF,
 	generatePayrollPDF,
 };
+// generatePDF()
+// 	.then(() => {
+// 		console.log("PDF generated successfully");
+// 	})
+// 	.catch((err) => {
+// 		console.error("Error generating PDF", err);
+// 	});
