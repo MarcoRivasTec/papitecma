@@ -1,7 +1,7 @@
 const os = require("os");
 const fs = require("fs");
 
-function getWiFiIPAddressHost() {
+const getWiFiIPAddressHost = async () => {
 	const interfaces = os.networkInterfaces();
 	for (const [name, iface] of Object.entries(interfaces)) {
 		if (name === "Wi-Fi") {
@@ -23,9 +23,9 @@ function getWiFiIPAddressHost() {
 		}
 	}
 	return false; // Return a default if no match is found
-}
+};
 
-function getTecmaVPNIPAddressHost() {
+const getTecmaVPNIPAddressHost = async () => {
 	const interfaces = os.networkInterfaces();
 	// console.log(interfaces);
 	for (const [name, iface] of Object.entries(interfaces)) {
@@ -56,6 +56,6 @@ function getTecmaVPNIPAddressHost() {
 		}
 	}
 	return false; // Fallback to localhost if no external IP is found
-}
+};
 
 module.exports = { getWiFiIPAddressHost, getTecmaVPNIPAddressHost };

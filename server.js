@@ -1,26 +1,37 @@
 require("dotenv").config();
 const express = require("express");
-const https = require("https");
 const { ApolloServer } = require("apollo-server-express");
-// const {
-// 	ApolloServerPluginLandingPageGraphQLPlayground,
-// } = require("@apollo/server-plugin-landing-page-graphql-playground");
 const typeDefs = require("./graphql/schemas/schema");
 const resolvers = require("./graphql/resolvers/resolvers");
 const { poolPromises } = require("./config/dbConfig");
-const {
-	getWiFiIPAddressHost,
-	getTecmaVPNIPAddressHost,
-} = require("./utils/ipaddress");
 const jwt = require("jsonwebtoken");
 const app = express();
 const port = 8083;
 const subdomain = "papitecma";
+// const https = require("https");
 
-const homeHost = getWiFiIPAddressHost();
-const tecmaHost = getTecmaVPNIPAddressHost();
-console.log("Current WiFi IP Address: ", homeHost);
-console.log("Current TecmaVPN IP Address: ", tecmaHost);
+let homeHost;
+let tecmaHost;
+
+const getHosts = async () => {
+	if (process.env.HOST === "ZENITH") {
+		const { getWiFiIPAddressHost } = require("./utils/ipaddress");
+		homeHost = await getWiFiIPAddressHost();
+		console.log("WiFi IP Address: ", homeHost);
+	} else {
+		homeHost = false;
+	}
+
+	if (process.env.HOST === "ZENITH") {
+		const { getTecmaVPNIPAddressHost } = require("./utils/ipaddress");
+		tecmaHost = await getTecmaVPNIPAddressHost();
+		console.log("TecmaVPN IP Address: ", tecmaHost);
+	} else {
+		tecmaHost = false;
+	}
+};
+
+getHosts();
 
 // const sslOptions = {
 // 	key: fs.readFileSync("/path/to/your/privatekey.pem"),
@@ -44,7 +55,7 @@ app.use((req, res, next) => {
 	}
 });
 
-app.use(express.json({ limit: "10mb" })); // Increase the JSON payload size limit to 50MB
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 app.use(express.static("public"));
@@ -52,7 +63,6 @@ app.use(express.static("public"));
 const server = new ApolloServer({
 	typeDefs,
 	resolvers,
-	// plugins: [ApolloServerPluginLandingPageGraphQLPlayground()], //Switches to Playground instead of Sandbox
 	playground: true,
 	context: async ({ req }) => {
 		const pools = await Promise.all(Object.values(poolPromises));
