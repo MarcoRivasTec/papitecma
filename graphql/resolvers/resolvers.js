@@ -2279,7 +2279,8 @@ const resolvers = {
 				return {
 					success: true,
 					message: "Information sent",
-					data: { ...data[0], qr: "https://tecmamovil.com" },
+					// data: { ...data[0], qr: "https://tecmamovil.com" },
+					data: { ...data[0], qr: "https://tecmamovil.com/redirect.html" },
 				};
 			} catch (error) {
 				console.error("Error while querying employee info:", error);
