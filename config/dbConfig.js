@@ -8,7 +8,7 @@ const configs = {
 		server: process.env.DB_HOST,
 		database: process.env.DB_TECMAMOVIL,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
@@ -18,7 +18,7 @@ const configs = {
 		server: process.env.DB_HOST_WEST,
 		database: process.env.DB_TECMAMOVIL,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
@@ -28,7 +28,7 @@ const configs = {
 		server: process.env.DB_HOST,
 		database: process.env.DB_NAME_1,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
@@ -38,7 +38,7 @@ const configs = {
 		server: process.env.DB_HOST,
 		database: process.env.DB_NAME_2,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
@@ -48,7 +48,7 @@ const configs = {
 		server: process.env.DB_HOST,
 		database: process.env.DB_NAME_5,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
@@ -58,7 +58,7 @@ const configs = {
 		server: process.env.DB_HOST,
 		database: process.env.DB_NAME_6,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
@@ -68,7 +68,7 @@ const configs = {
 		server: process.env.DB_HOST_WEST,
 		database: process.env.DB_NAME_3,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
@@ -78,11 +78,10 @@ const configs = {
 		server: process.env.DB_HOST_WEST,
 		database: process.env.DB_NAME_4,
 		options: {
-			encrypt: false, // Use encryption if needed
+			encrypt: false,
 			enableArithAbort: true,
 		},
 	},
-	// Add more configurations as needed
 };
 
 const poolPromises = {};
