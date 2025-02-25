@@ -32,6 +32,7 @@ const newKey = process.env.NEW_KEY;
 const path = require("path");
 const fs = require("fs");
 const Numalet = require("numalet");
+const { DateTime } = require("luxon");
 // const secretKey = process.env.NEW_KEY;
 
 const selectRegion = async (region) => {
@@ -96,7 +97,7 @@ const resolvers = {
 			const queryName = await executeQuery(
 				`SELECT CB_NOMBRES FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
 				"Error fetching user credentials",
-				"tecmacentral"
+				dbs.colabora
 			);
 			const name = queryName[0];
 
@@ -217,7 +218,7 @@ const resolvers = {
 		// 		`Select C.CB_RFC from COLABORA as C
 		// 		where C.CB_CODIGO = '${numEmp}'`,
 		// 		"Error fetching personal information",
-		// 		"tecmacentral"
+		// 		dbs.colabora
 		// 	);
 		// 	console.log(query);
 		// 	const RFC = query[0];
@@ -396,32 +397,65 @@ const resolvers = {
 		},
 		Vacaciones: async (_, { numEmp, region }) => {
 			const dbs = await selectRegion(region);
+			// const query = await executeQuery(
+			// 	`Select CB_FEC_ANT as INGRESO,
+			// 			DATEDIFF(yy,CB_FEC_ANT, GETDATE()) as ANTIGUEDAD,
+			// 			DATEDIFF(
+			// 				DAY,
+			// 				GETDATE(),
+			// 				DATEADD(YEAR, DATEDIFF(YEAR, CB_FEC_ANT, GETDATE()) + 1, CB_FEC_ANT)
+			// 			) AS DIASANIV,
+			// 			CB_DER_PAG as GANADOS,
+			// 			CB_V_GOZO as TOMADOS
+			// 	From COLABORA Where CB_CODIGO = '${numEmp}'`,
+			// 	"Error fetching vacaciones information",
+			// 	dbs.colabora
+			// );
 			const query = await executeQuery(
 				`Select CB_FEC_ANT as INGRESO,
 						DATEDIFF(yy,CB_FEC_ANT, GETDATE()) as ANTIGUEDAD, 
-						DATEDIFF(
-							DAY, 
-							GETDATE(), 
-							DATEADD(YEAR, DATEDIFF(YEAR, CB_FEC_ANT, GETDATE()) + 1, CB_FEC_ANT)
-						) AS DIASANIV,						
+						CB_FEC_ANT As DIASANIV,						
 						CB_DER_PAG as GANADOS, 
 						CB_V_GOZO as TOMADOS
 				From COLABORA Where CB_CODIGO = '${numEmp}'`,
 				"Error fetching vacaciones information",
 				dbs.colabora
 			);
+
+			let ingreso = new Date(query[0].DIASANIV);
+			let today = new Date();
+
+			let anniversary = new Date(
+				today.getFullYear(),
+				ingreso.getMonth(),
+				ingreso.getDate()
+			);
+
+			if (today > anniversary) {
+				anniversary.setFullYear(today.getFullYear() + 1);
+			}
+
+			let remainingDays = Math.ceil(
+				(anniversary - today) / (1000 * 60 * 60 * 24)
+			);
+			console.log("Data retrieved: ", query[0]);
+			// console.log("Remaining days: ", remainingDays);
+			// return;
 			// (DATEDIFF(yy,CB_FEC_ANT, GETDATE()) * 365) - DATEDIFF(dd,CB_FEC_ANT, GETDATE()) as DIASANIV,
 			return {
 				antiguedad: {
 					ingreso: returnValue(query[0].INGRESO),
 					antiguedad: returnValue(query[0].ANTIGUEDAD),
-					diasaniv: returnValue(query[0].DIASANIV),
+					diasaniv: returnValue(remainingDays),
 				},
 				diasvacs: {
-					ganados: returnValue(query[0].GANADOS),
-					tomados: returnValue(query[0].TOMADOS),
-					disponibles:
-						returnValue(query[0].GANADOS) - returnValue(query[0].TOMADOS),
+					ganados: returnValue(parseFloat(query[0].GANADOS).toFixed(2)),
+					tomados: returnValue(parseFloat(query[0].TOMADOS).toFixed(2)),
+					disponibles: returnValue(
+						(
+							parseFloat(query[0].GANADOS) - parseFloat(query[0].TOMADOS)
+						).toFixed(2)
+					),
 				},
 			};
 		},
@@ -483,32 +517,27 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					AHFA.AH_SALDO * 2 As SaldoFA,
-					AHCA.AH_SALDO As SaldoCA,
-					PR_SALDO As SaldoPrestamo
+					MAX(CASE WHEN AH_TIPO = '${
+						region === "TIJ" ? "1" : "3"
+					}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
+					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
-					AHORRO As AHFA
-				Left Join 
-					AHORRO As AHCA
-				On 
-					AHFA.CB_CODIGO = AHCA.CB_CODIGO
-				And 
-					AHFA.AH_TIPO = '2'
-				And 
-					AHCA.AH_TIPO = '3'
+					AHORRO As AH
 				Left Join 
 					PRESTAMO As PR
 				On 
-					AHFA.CB_CODIGO = PR.CB_CODIGO
+					AH.CB_CODIGO = PR.CB_CODIGO
 				And 
 					PR.PR_TIPO = '4'
 				And 
 					PR.PR_STATUS = 0
 				Where 
-					AHFA.CB_CODIGO = '${numEmp}'`,
+					AH.CB_CODIGO = '${numEmp}'`,
 				"Error fetching fondo de ahorro information",
 				dbs.colabora
 			);
+
 			return {
 				saldo_fa: returnZero(query[0].SaldoFA),
 				saldo_ca: returnZero(query[0].SaldoCA),
@@ -552,7 +581,7 @@ const resolvers = {
 				"Error fetching bloqueo information",
 				dbs.colabora
 			);
-			// console.log("Statement: ", periodos);
+			console.log("Recibos a retornar: ", recibos);
 			// const recibos = recibosQuery.recordset;
 			// console.log("Recibos: ", recibosQuery);
 			return recibos;
@@ -707,13 +736,112 @@ const resolvers = {
 					From AHORRO As AH
 						Where AH.CB_CODIGO = ${numEmp}
 						And AH.AH_TIPO = '2' 
-						And AH.AH_STATUS = 0`,
-				"Error fetching prenomina days information",
+						And AH.AH_STATUS = 0
+						And AH.AH_FECHA = (SELECT MAX(AH_FECHA) 
+											FROM Ahorro 
+											WHERE CB_CODIGO = '${numEmp}' 
+												AND AH_STATUS = 0 
+												AND AH_TIPO = '2');`,
+				"Error fetching balance and existing loan",
 				dbs.colabora
 			);
+
+			// const prestamoKiosko = await executeQuery(
+			// 	`Declare @CurrentYear INT = YEAR(GETDATE());
+			// 	Declare @Exists NVARCHAR(5);
+
+			// 	Set @Exists = (
+			// 		Select Case
+			// 			When Exists (
+			// 				Select 1
+			// 				From K_Solicitudes
+			// 				Where YEAR(Fecha) = @CurrentYear
+			// 				And No = ${numEmp}
+			// 			) Then 'true'
+			// 			Else 'false'
+			// 		End
+			// 	);
+
+			// 	Select
+			// 		@Exists As prestamoExists`,
+			// 	"Error fetching existing loan k",
+			// 	dbs.kioskotek
+			// );
+
+			const prestamo_weeks = await executeQuery(
+				`SELECT TOP 1 
+					semana_inicial AS initial_week,
+					semana_final AS final_week
+				FROM Prestamos
+				ORDER BY fecha DESC;`,
+				"Error fetching prestamo weeks information",
+				dbs.tecmamovil
+			);
+
+			const now = DateTime.now().setZone("America/Denver");
+
+			function calculateMaxWeeks() {
+				const initial_week = 6; // Fixed throughout the year
+				const final_week = 41; // End of loan period
+
+				// Get the current date/time in America/Denver timezone
+				const now = DateTime.now().setZone("America/Denver");
+
+				console.log("Now's date is: ", now.toISO());
+
+				function getFirstSaturdayOfYear(year, zone = "America/Denver") {
+					// Start from January 1st
+					let first_day = DateTime.fromObject(
+						{ year, month: 1, day: 1 },
+						{ zone }
+					);
+
+					// Find the first Saturday
+					while (first_day.weekday !== 6) {
+						first_day = first_day.plus({ days: 1 });
+					}
+
+					return first_day.startOf("day");
+				}
+
+				const first_saturday = getFirstSaturdayOfYear(now.year);
+				console.log("First Saturday of the Year: ", first_saturday.toISO());
+
+				// Find the start of week 6 (loan period start) — Adjust to start at week 6
+				const loan_start = first_saturday.plus({ weeks: initial_week - 1 });
+				console.log("Loan Start (Start of Week 6): ", loan_start.toISO());
+
+				// Calculate the current week based on Saturdays
+				let current_week =
+					Math.floor(now.diff(loan_start, "weeks").weeks) + initial_week;
+
+				// Correct for boundary cases (ensure week shifts on Saturday)
+				const current_saturday = now.startOf("week").plus({ days: 6 }); // This week's Saturday
+				if (now < current_saturday) {
+					current_week -= 1;
+				}
+
+				console.log("Current Week: ", current_week);
+
+				// Ensure current_week doesn't exceed final_week
+				if (current_week > final_week) {
+					current_week = final_week;
+				}
+
+				// Calculate max weeks
+				const max_weeks = final_week - current_week + 1;
+
+				return max_weeks;
+			}
+
+			// Example usage
+			console.log("Max Weeks:", calculateMaxWeeks());
+
 			return {
 				saldo_fa: returnZero(prestamo[0].SaldoFA),
 				prestamo: prestamo[0].PrestamoExists === "true" ? true : false,
+				initial_week: prestamo_weeks[0].initial_week,
+				final_week: prestamo_weeks[0].final_week,
 			};
 		},
 		Encuestas: async (_, { numEmp, region }) => {
@@ -801,6 +929,42 @@ const resolvers = {
 			return updatedQuestions;
 
 			// console.log("Preguntas: ", preguntas);
+		},
+		Policies: async (_, { region }) => {
+			const dbs = await selectRegion(region);
+
+			try {
+				const policies = await executeQuery(
+					`Select id, 
+						status, 
+						poliza as policy, 
+						icono as icon, 
+						linea_1 as line_1, 
+						linea_2 as line_2, 
+						linea_3 as line_3,
+						ref_1,
+						ref_2,
+						ref_3,
+						ref_4,
+						icono_ref_1 as icon_ref_1,
+						icono_ref_2 as icon_ref_2,
+						icono_ref_3 as icon_ref_3,
+						icono_ref_4 as icon_ref_4
+					From Polizas`,
+					"Error querying policies",
+					dbs.tecmamovil
+				);
+
+				console.log("Polizas: ", policies);
+
+				return { success: true, message: "Success", data: policies };
+			} catch (error) {
+				console.log("Error getting policies", JSON.stringify(error, null, 1));
+				return { success: false, message: "Error ocurred" };
+			}
+
+			return;
+			// return updatedQuestions;
 		},
 		TestQuery: async () => {
 			const projects = [
@@ -956,7 +1120,7 @@ const resolvers = {
 					Where
 						TB_CODIGO = '${project}'`,
 					"Error",
-					"tecmacentral"
+					dbs.colabora
 				)
 			);
 
@@ -985,10 +1149,24 @@ const resolvers = {
 			const decryptedPassword = decryptOld(encNip.NIP, oldKey);
 
 			if (!encNip || nip !== decryptedPassword) {
-				throw new Error(
-					"El usuario no existe o las credenciales son inválidas"
-				);
+				return {
+					success: false,
+					message: "El usuario no existe o las credenciales son inválidas.",
+				};
 			}
+
+			const isActive = await executeQuery(
+				`SELECT CB_ACTIVO As active FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
+				"Error fetching user credentials",
+				dbs.colabora
+			);
+
+			if (isActive[0].active === "N")
+				return {
+					success: false,
+					message:
+						"Usuario inactivo, contacta con tu departamento de recursos humanos.",
+				};
 
 			const queryName = await executeQuery(
 				`SELECT CB_NOMBRES FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
@@ -1005,32 +1183,51 @@ const resolvers = {
 				}
 			);
 
-			return { token, name: name.CB_NOMBRES };
+			return {
+				success: true,
+				message: "Login successful",
+				data: { token, name: name.CB_NOMBRES },
+			};
 		},
-		resetNIP: async (_, { numEmp, rfc, newNIP }) => {
+		resetNIP: async (_, { numEmp, rfc, newNIP, region }) => {
+			const dbs = await selectRegion(region);
+
 			const employeeData = await executeQuery(
 				`Select
-					RFC As rfc,
 					FEC_LOGIN As login_date
 				From
 					Empleados
 				Where
 					CB_CODIGO = ${numEmp}`,
 				"Error retrieving employee login date",
-				"kioskocentral"
+				dbs.kioskotek
+			);
+
+			const employeeRFC = await executeQuery(
+				`Select
+					CB_RFC As rfc
+				From
+					COLABORA
+				Where
+					CB_CODIGO = ${numEmp}`,
+				"Error retrieving employee login date",
+				dbs.colabora
 			);
 			console.log("Employee data: ", employeeData);
 
-			if (!employeeData[0].rfc) {
+			if (!employeeRFC[0].rfc) {
 				return "Not found";
 			}
 
-			const launchDate = new Date(2024, 12, 20);
+			const launchDate = new Date(2025, 3, 17);
 			const lastLoginDate = new Date(employeeData[0].login_date);
+			console.log(
+				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate}`
+			);
 
 			if (lastLoginDate > launchDate) {
 				console.log("Last login is after launch date, using new enc");
-				if (rfc !== employeeData[0].rfc) {
+				if (rfc !== employeeRFC[0].rfc) {
 					console.log("RFC is invalid");
 					return "Invalid RFC";
 				} else {
@@ -1049,13 +1246,13 @@ const resolvers = {
 						CB_CODIGO = ${numEmp}
 						And RFC = '${rfc}'`,
 						"Error updating measurement",
-						"kioskocentral"
+						dbs.kioskotek
 					);
 					return "Success";
 				}
 			} else {
 				console.log("Last login is before launch date, using old enc");
-				if (rfc !== employeeData[0].rfc) {
+				if (rfc !== employeeRFC[0].rfc) {
 					console.log("RFC is invalid");
 					return "Invalid RFC";
 				} else {
@@ -1074,7 +1271,7 @@ const resolvers = {
 							CB_CODIGO = ${numEmp}
 							And RFC = '${rfc}'`,
 						"Error updating measurement",
-						"kioskocentral"
+						dbs.kioskotek
 					);
 					return "Success";
 				}
@@ -1205,10 +1402,15 @@ const resolvers = {
 				start_date = null,
 				end_date = null,
 				days = null,
+				requested_loan = null,
+				loan_weeks = null,
 			}
 		) => {
 			// console.log(`Day to adjust: ${day_to_adjust}, period: ${period}`);
 			// return
+			if (letter === "PtmoFA") {
+				if (loan_weeks < 2) return "LessThan2Weeks";
+			}
 			const data = {
 				numEmp,
 				name,
@@ -1225,9 +1427,16 @@ const resolvers = {
 				start_date,
 				end_date,
 				days,
+				requested_loan,
+				loan_weeks,
 			};
 			const dbs = await selectRegion(region);
 			console.log("Data values: ", JSON.stringify(data, null, 1));
+			// if (letter === "PtmoFA") {
+			// 	console.log("Letter is PtmoFA");
+			// 	return { pdfFile: "Wait" };
+			// }
+
 			if (letter !== "NIP" && letter !== "AltaIMSS") {
 				let letterQuery;
 				switch (letter) {
@@ -1265,7 +1474,7 @@ const resolvers = {
 							ELSE CAST(0 AS BIT)
 						END AS existing_requisition;`,
 					"Error retrieving employee information",
-					"kioskocentral"
+					dbs.kioskotek
 				);
 				// console.log("Existing: ", existing);
 				if (existing[0].existing_requisition) {
@@ -1356,9 +1565,11 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${project}'`,
+					and Proyecto = '${
+						region === "TIJ" || region === "SAL" ? project[0] : project
+					}'`,
 				"Error obtaining CSC Data",
-				"kioskocentral"
+				dbs.kioskotek
 			);
 			// console.log("Directory: ", directory);
 
@@ -1424,7 +1635,7 @@ const resolvers = {
 						Where
 							CB_CODIGO = '${numEmp}'`,
 						"Error retrieving employee information",
-						"tecmacentral"
+						dbs.colabora
 					);
 
 					const companyData = await executeQuery(
@@ -1446,7 +1657,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
 						"Error retrieving employee information",
-						"tecmacentral"
+						dbs.colabora
 					);
 					// console.log("Employee data: ", employeeData);
 					// console.log("Company data: ", companyData);
@@ -1507,7 +1718,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
 						"Error retrieving company information",
-						"tecmacentral"
+						dbs.colabora
 					);
 
 					const formattedDate = formatDateToSpanish(new Date());
@@ -1622,7 +1833,7 @@ const resolvers = {
 					// 				and CB_CODIGO = '${numEmp}'
 					// 		)`,
 					// 	"Error retrieving folio",
-					// 	"tecmacentral"
+					// 	dbs.colabora
 					// );
 					pending = "0";
 					letterType = letter;
@@ -1665,6 +1876,209 @@ const resolvers = {
 				}
 				case "PtmoFA": {
 					letterType = letter;
+					const interestRate = 0.159;
+					const prestamo = await executeQuery(
+						`Declare @CurrentYear INT = YEAR(GETDATE());
+						Declare @Exists NVARCHAR(5);
+		
+						Set @Exists = (
+							Select Case 
+								When Exists (
+									Select 1
+									From PRESTAMO
+									Where YEAR(PR_FECHA) = @CurrentYear
+									And CB_CODIGO = ${numEmp}
+									And PR_TIPO = '4'
+								) Then 'true'
+								Else 'false'
+							End
+						);
+		
+						Select 
+							SUM(AH.AH_SALDO) * 2 As balance,
+							@Exists As prestamoExists
+		
+							From AHORRO As AH
+							Where AH.CB_CODIGO = ${numEmp}
+							And AH.AH_TIPO = '2' 
+							And AH.AH_STATUS = 0
+							And AH.AH_FECHA = (SELECT MAX(AH_FECHA) 
+												FROM Ahorro 
+												WHERE CB_CODIGO = '${numEmp}' 
+													AND AH_STATUS = 0 
+													AND AH_TIPO = '2');`,
+						"Error fetching prenomina days information",
+						dbs.colabora
+					);
+
+					const prestamoKiosko = await executeQuery(
+						`Declare @CurrentYear INT = YEAR(GETDATE());
+						Declare @Exists NVARCHAR(5);
+		
+						Set @Exists = (
+							Select Case 
+								When Exists (
+									Select 1
+									From K_Solicitudes
+									Where YEAR(Fecha) = YEAR(@CurrentYear)
+									And No = ${numEmp}
+								) Then 'true'
+								Else 'false'
+							End
+						);
+		
+						Select 
+							@Exists As prestamoExists`,
+						"Error fetching existing loan k",
+						dbs.kioskotek
+					);
+
+					const isLoanAllowed =
+						prestamo[0].prestamoExists === "true" ? true : false;
+
+					const isLoanRequested =
+						prestamoKiosko[0].prestamoExists === "true" ? true : false;
+					console.log("isLoanAllowed: ", isLoanAllowed);
+
+					if (isLoanAllowed) {
+						console.log("Loan exists, denying.");
+						return { pdfFile: "Exists" };
+					}
+
+					if (isLoanRequested) {
+						console.log("Already requested loan, denying.");
+						return { pdfFile: "Existing requisition" };
+					}
+
+					const balance = returnZero(prestamo[0].balance);
+					if (requested_loan > balance * 0.9 || requested_loan < balance * 0.1)
+						return { pdfFile: "Limit" };
+					console.log("Balance is: ", balance);
+
+					const prestamo_weeks = await executeQuery(
+						`SELECT TOP 1 
+						semana_inicial AS initial_week,
+							semana_final AS final_week
+							FROM Prestamos
+							ORDER BY fecha DESC;`,
+						"Error fetching prestamo weeks information",
+						dbs.tecmamovil
+					);
+
+					const initial_week = prestamo_weeks[0].initial_week;
+					const final_week = prestamo_weeks[0].final_week;
+
+					const getWeekDates = async (year, weekNumber) => {
+						console.log("Week number: ", weekNumber);
+						// Get the first day of the year
+						const firstDayOfYear = new Date(year, 0, 1);
+						const firstSaturdayOfYear = new Date(firstDayOfYear);
+
+						// Find the first Saturday of the year
+						while (firstSaturdayOfYear.getDay() !== 6) {
+							firstSaturdayOfYear.setDate(firstSaturdayOfYear.getDate() + 1);
+						}
+
+						// Calculate the offset for the desired week number
+						const daysOffset = (weekNumber - 1) * 7;
+						const startOfWeek = new Date(
+							firstSaturdayOfYear.setDate(
+								firstSaturdayOfYear.getDate() + daysOffset
+							)
+						);
+						const endOfWeek = new Date(startOfWeek);
+						endOfWeek.setDate(startOfWeek.getDate() + 6); // Last day of the week
+
+						console.log(
+							"Start of week: ",
+							startOfWeek,
+							" end of week: ",
+							endOfWeek
+						);
+						return {
+							firstDay: startOfWeek,
+							lastDay: endOfWeek,
+						};
+					};
+
+					const currentYear = new Date().getFullYear();
+
+					const startDate = await getWeekDates(currentYear, initial_week);
+
+					const endDate = await getWeekDates(currentYear, final_week);
+
+					let availableWeeks;
+					const today = new Date();
+					if (today >= startDate.firstDay && today <= endDate.lastDay) {
+						const diffInTime = endDate.lastDay - today;
+						const diffInWeeks = Math.ceil(
+							diffInTime / (1000 * 60 * 60 * 24 * 7)
+						);
+
+						availableWeeks = diffInWeeks;
+					} else {
+						console.log("Out of range");
+						return { pdfFile: "OutOfRange" };
+					}
+
+					if (loan_weeks > availableWeeks) return { pdfFile: "ExceedsPeriod" };
+
+					const interest = parseFloat(
+						((interestRate * loan_weeks * requested_loan) / 100).toFixed(2)
+					);
+
+					const totalToPay = parseFloat((requested_loan + interest).toFixed(2));
+
+					const weekly_discount = parseFloat(
+						(totalToPay / loan_weeks).toFixed(2)
+					);
+
+					const companyData = await executeQuery(
+						`SELECT
+							RS_NOMBRE As razon_social
+						FROM
+							COLABORA As C
+							Inner Join RPATRON As RP On RP.TB_CODIGO = C.CB_PATRON
+							Inner Join RSOCIAL As RS On RS.RS_CODIGO = RP.RS_CODIGO
+						WHERE
+							C.CB_CODIGO = '${numEmp}'`,
+						"Error retrieving company information",
+						dbs.colabora
+					);
+
+					const formattedDate = formatDateToSpanish(new Date());
+
+					const pdfData = {
+						...data,
+						...companyData[0],
+						...directory[0],
+						fecha: formattedDate,
+					};
+
+					pdfData.requested_loan = requested_loan.toFixed(2);
+					pdfData.loan_weeks = loan_weeks.toFixed(2);
+					pdfData.interest = interest.toFixed(2);
+					pdfData.total = totalToPay.toFixed(2);
+					pdfData.weekly_discount = weekly_discount.toFixed(2);
+
+					console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
+
+					const imageBase64 = fs
+						.readFileSync(
+							path.join(__dirname, "../../public/assets/images/LOGOTECMA.png")
+						)
+						.toString("base64");
+
+					pdfData.imageBase64 = imageBase64;
+
+					console.log(`Generating ${letterType} pdf...`);
+					try {
+						fileBuffer = await generateSavingsLoanPDF({ data: pdfData });
+					} catch (err) {
+						console.error(`Error generating ${letterType} PDF:`, err);
+						return { pdfFile: "Error" };
+					}
+
 					newFileName = `PtmoFA_${numEmp} - ${formattedCustom}.pdf`;
 					// try {
 					// 	const pdfBuffer = await generateSavingsLoanPDF({ data });
@@ -1675,7 +2089,6 @@ const resolvers = {
 					// 	throw new Error("Failed to create PDF.");
 					// }
 					console.log("Generating savings loan pdf...");
-
 					break;
 				}
 				case "RetiroFA": {
@@ -1729,7 +2142,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = ${numEmp}`,
 						"Error retrieving employee information",
-						"tecmacentral"
+						dbs.colabora
 					);
 
 					const formattedDate = formatDateToSpanish();
@@ -1772,12 +2185,6 @@ const resolvers = {
 
 					break;
 				}
-				// case "Comentario":
-				// 	break;
-
-				// Poliza ya no se usara
-				// case "Poliza":
-				// 	break;
 
 				default:
 					break;
@@ -1876,7 +2283,7 @@ const resolvers = {
 					coment ? coment : null,
 				],
 				"Error while sending requisition",
-				"kioskocentral"
+				dbs.kioskotek
 			);
 			console.log("Done");
 			return { pdfFile: "Done" };

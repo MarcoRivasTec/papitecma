@@ -87,11 +87,11 @@ async function generateAdjustmentPDF({ data }) {
 
 	await page.setContent(htmlContent, { waitUntil: "networkidle0" });
 
-	await page.pdf({
-		path: outputPath, // Output path
-		format: "LETTER", // Paper format
-		printBackground: true, // Print CSS backgrounds
-	});
+	// await page.pdf({
+	// 	path: outputPath, // Output path
+	// 	format: "LETTER", // Paper format
+	// 	printBackground: true, // Print CSS backgrounds
+	// });
 	// await browser.close();
 	// return;
 	// Generate the PDF as a buffer
@@ -250,27 +250,24 @@ async function generateIMSSPDF({ data }) {
 
 // Prestamo Fondo Ahorro
 async function generateSavingsLoanPDF({ data }) {
-	// const outputDir = path.join(__dirname, "../pdfs/");
-	// const outputPath = path.join(outputDir, "CartaTrabajo.pdf");
+	const outputDir = path.join(__dirname, "../pdfs/");
+	const outputPath = path.join(outputDir, `PtmoFA.pdf`);
 
-	const browser = await puppeteer.launch();
+	const browser = await puppeteer.launch({
+		headless: true,
+		args: ["--no-sandbox", "--disable-setuid-sandbox", "--headless=old"],
+	});
 	const page = await browser.newPage();
 
-	const htmlContent = fs.readFileSync(
-		path.join(__dirname, "./letterTemplate.html"),
+	const htmlTemplate = fs.readFileSync(
+		path.join(__dirname, "./templates/loanTemplate.html"),
 		"utf8"
 	);
 
-	// const template = handlebars.compile(htmlTemplate);
-	// const htmlContent = template({ name, date });
+	const template = handlebars.compile(htmlTemplate);
+	const htmlContent = template(data);
 
 	await page.setContent(htmlContent, { waitUntil: "networkidle0" });
-
-	// Generate the PDF as a buffer
-	const pdfBuffer = await page.pdf({
-		format: "LETTER",
-		printBackground: true,
-	});
 
 	// await page.pdf({
 	// 	path: outputPath, // Output path
@@ -278,9 +275,15 @@ async function generateSavingsLoanPDF({ data }) {
 	// 	printBackground: true, // Print CSS backgrounds
 	// });
 
+	const pdfUint8Array = await page.pdf({
+		format: "LETTER",
+		printBackground: true,
+	});
+	console.log("Generated pdf file");
+
 	await browser.close();
 
-	return pdfBuffer;
+	return Buffer.from(pdfUint8Array);
 }
 
 // Retiro Fondo Ahorro

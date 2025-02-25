@@ -111,9 +111,9 @@ const typeDefs = gql`
 	}
 
 	type DiasVacs {
-		ganados: Int
-		tomados: Int
-		disponibles: Int
+		ganados: Float!
+		tomados: Float!
+		disponibles: Float!
 	}
 
 	type Vacaciones {
@@ -194,6 +194,8 @@ const typeDefs = gql`
 	type Prestamo {
 		saldo_fa: Float!
 		prestamo: Boolean!
+		initial_week: Int!
+		final_week: Int!
 	}
 
 	type Encuestas {
@@ -224,15 +226,33 @@ const typeDefs = gql`
 		critical: Boolean
 	}
 
+	type policy {
+		id: Int!
+		status: Boolean!
+		policy: String!
+		icon: String!
+		line_1: String!
+		line_2: String
+		line_3: String
+		ref_1: String!
+		ref_2: String
+		ref_3: String
+		ref_4: String
+		icon_ref_1: String!
+		icon_ref_2: String
+		icon_ref_3: String
+		icon_ref_4: String
+	}
+
 	input SubmitSurveyInput {
 		encuesta: Int! # Survey ID
-		numEmp: Int! # Employee number
+		numEmp: String! # Employee number
 		region: String! # Employee region
 		data: [QuestionInput!] # Array of questions and answers
 	}
 
 	input OpinionInput {
-		numEmp: Int!
+		numEmp: String!
 		region: String!
 		opinion: String!
 	}
@@ -243,19 +263,31 @@ const typeDefs = gql`
 	}
 
 	input QRInput {
-		numEmp: Int!
+		numEmp: String!
 		region: String!
 	}
 
 	type Response {
-		success: Boolean! # Indicates success or failure
-		message: String! # Success or error message
+		success: Boolean! #
+		message: String! #
 	}
 
 	type ResponseData {
-		success: Boolean! # Indicates success or failure
-		message: String! # Success or error message
+		success: Boolean! #
+		message: String! #
 		data: EmployeeData
+	}
+
+	type ResponseLogin {
+		success: Boolean!
+		message: String!
+		data: Token
+	}
+
+	type Policies {
+		success: Boolean!
+		message: String!
+		data: [policy]
 	}
 
 	type EmployeeData {
@@ -303,14 +335,15 @@ const typeDefs = gql`
 		Prestamo(numEmp: String!, region: String!): Prestamo!
 		Encuestas(numEmp: String!, region: String!): [Encuestas]
 		Encuesta(encuesta: Int!, region: String!): [Encuesta!]!
+		Policies(region: String!): Policies!
 		TestQuery: String
 	}
 
 	type Mutation {
-		login(numEmp: String!, nip: String!, region: String!): Token
-		resetNIP(numEmp: Int!, rfc: String!, newNIP: Int!): String!
+		login(numEmp: String!, nip: String!, region: String!): ResponseLogin!
+		resetNIP(numEmp: String!, rfc: String!, newNIP: String!, region: String!): String!
 		addFamilyMember(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			name: String!
 			kin: Int!
@@ -318,19 +351,19 @@ const typeDefs = gql`
 			birth: String!
 		): Boolean
 		removeFamilyMember(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			name: String!
 			date: String!
 		): Boolean
 		updateMeasurements(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			type: String!
 			size: String!
 		): Boolean
 		sendRequisition(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			name: String!
 			letter: String!
@@ -348,9 +381,11 @@ const typeDefs = gql`
 			start_date: String
 			end_date: String
 			days: Int
+			requested_loan: Float
+			loan_weeks: Int
 		): sendRequisition!
 		generatePayroll(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			period: Int!
 			year: Int!
