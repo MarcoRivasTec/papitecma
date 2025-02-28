@@ -147,7 +147,7 @@ apolloServer.start().then(() => {
 
 		app.listen(testPort, () => {
 			console.log(
-				`Server running at http://localhost:${testPort}.${apolloServer.graphqlPath}`
+				`Server running at http://localhost:${testPort}${apolloServer.graphqlPath}`
 			);
 		});
 
