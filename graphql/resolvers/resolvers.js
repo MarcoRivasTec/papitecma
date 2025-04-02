@@ -1,6 +1,7 @@
 const {
 	executeQuery,
 	executeParameterizedQuery,
+	executeQueryNew,
 } = require("../../utils/dbUtils");
 const jwt = require("jsonwebtoken");
 const { decryptOld, encryptOld, encrypt } = require("../../utils/decryption");
@@ -50,6 +51,7 @@ const selectRegion = async (region) => {
 				kioskotek: "kioskoamx",
 				colabora: "amxpro",
 				tecmamovil: "tecmamovilcentral",
+				tecma_csa: "tecma_csa",
 			};
 		}
 		case "SAL":
@@ -84,11 +86,11 @@ const resolvers = {
 				"Error fetching user credentials",
 				"kioskocentral"
 			);
-			const encNip = queryNip[0];
+			const userData = queryNip[0];
 
-			const decryptedPassword = decryptOld(encNip.NIP, oldKey);
+			const decryptedPassword = decryptOld(userData.NIP, oldKey);
 
-			if (!encNip || nip !== decryptedPassword) {
+			if (!userData || nip !== decryptedPassword) {
 				throw new Error(
 					"El usuario no existe o las credenciales son inválidas"
 				);
@@ -202,6 +204,21 @@ const resolvers = {
 				where CB.CB_CODIGO = '${numEmp}'`,
 				"Error fetching user card info",
 				dbs.colabora
+			);
+
+			// Register log in to K_Log
+			await executeQuery(
+				`DECLARE @currentDate DATETIME = GETDATE();
+				INSERT INTO K_Log (No, Fecha, Planta, Proyecto, Tipo)
+				Values (
+					'${numEmp}',
+					@currentDate,
+					'${userInfo[0].planta_id.trim()}',
+					'${(region === "TIJ" || region === "SAL") ? userInfo[0].planta_id.charAt(0) : userInfo[0].proyecto.trim()}',
+					'Login'
+					)`,
+				"Error registering log in",
+				dbs.kioskotek
 			);
 			// console.log("Info: ", JSON.stringify(userInfo, null, 1));
 			return userInfo[0];
@@ -517,9 +534,8 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${
-						region === "TIJ" ? "1" : "3"
-					}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
+				}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -842,6 +858,7 @@ const resolvers = {
 				prestamo: prestamo[0].PrestamoExists === "true" ? true : false,
 				initial_week: prestamo_weeks[0].initial_week,
 				final_week: prestamo_weeks[0].final_week,
+				max_weeks: 30
 			};
 		},
 		Encuestas: async (_, { numEmp, region }) => {
@@ -1134,32 +1151,213 @@ const resolvers = {
 			// 	console.error("An error occurred while executing the queries:", error);
 			// }
 		},
+		IsSupervisor: async (_, { numEmp, region }) => {
+			const dbs = await selectRegion(region);
+
+			// const isSupervisor = await executeQuery(
+			// 	`SELECT 
+			// 		CASE 
+			// 			WHEN EXISTS (
+			// 				SELECT 1 
+			// 				FROM NIVEL3
+			// 				WHERE TB_NUMERO = ${numEmp}
+			// 			)
+			// 			THEN CAST(1 AS BIT)
+			// 			ELSE CAST(0 AS BIT)
+			// 		END AS match;`,
+			// 	"Error fetching supervisor information",
+			// 	dbs.colabora
+			// );
+
+			const isSupervisor = await executeQuery(
+				`SELECT 
+					CASE 
+						WHEN EXISTS (
+							SELECT 1 
+							FROM NIVEL3
+							WHERE TB_NUMERO = ${numEmp}
+						)
+						THEN (
+							SELECT TOP 1 TB_CODIGO
+							FROM NIVEL3
+							WHERE TB_NUMERO = ${numEmp}
+						)
+						ELSE 'FALSE'
+					END AS result;`,
+				"Error fetching supervisor information",
+				dbs.colabora
+			);
+
+			console.log("is supervisor data: ", isSupervisor[0])
+
+			if (isSupervisor[0].result && numEmp !== 0 && numEmp !== '0') {
+				const activeEmployees = await executeQuery(
+					`SELECT CB_CODIGO as employeeNum
+						FROM COLABORA
+						WHERE CB_NIVEL3 = '${isSupervisor[0].result.trim()}'
+						AND CB_ACTIVO = 'S'`,
+					"Error fetching employees information",
+					dbs.colabora
+				);
+
+				if (activeEmployees && activeEmployees.length > 0) {
+					console.log("Active employees under supervisor: ", activeEmployees)
+					const employeeNums = activeEmployees
+						.map(emp => `'${emp.employeeNum}'`) // wrap each number in single quotes
+						.join(', ');
+
+					console.log("Employee numbers: ", employeeNums);
+
+					const employeeRequests = await executeQuery(
+						`SELECT No as numEmp, Nombre as name, Carta as type
+							FROM K_Solicitudes
+							WHERE No IN (${employeeNums})
+							AND Pendiente = '0'
+							AND (Carta = 'Vacaciones'
+							or Carta = 'Permiso')`,
+						"Error fetching employee requests information",
+						dbs.kioskotek
+					);
+					if (employeeRequests && employeeRequests.length > 0) {
+
+						return { success: true, message: "Available requests", data: employeeRequests }
+					} else {
+						return { success: true, message: "No requests" }
+					}
+					console.log("Employee requests: ", employeeRequests)
+				}
+				return { success: true, message: "Done", }
+			} else {
+				return { success: false, message: "Done" }
+			}
+
+		},
+		SuperiorRequests: async (_, { numEmp, region }) => {
+			const dbs = await selectRegion(region);
+
+			const supervisorData = await executeQuery(
+				`SELECT TB_CODIGO as supervisor_id,
+						TB_TEXTO as superior_id
+				FROM NIVEL3`,
+				"Error fetching supervisor information",
+				dbs.colabora
+			);
+
+			console.log("Supervisor data: ", supervisorData[0])
+
+			const supervisorRequests = await executeQuery(
+				`SELECT [id_solicitud]
+						,[id_empleado]
+						,[tipo_solicitud]
+						,[estado]
+						,[fecha_inicio]
+						,[fecha_fin]
+						,[fecha_solicitud]
+						,[dias_totales]
+						,[id_motivo]
+						,[comentario_empleado]
+						,[pre_aprobado_por]
+						,[fecha_pre_aprobacion]
+						,[aprobado_por]
+						,[fecha_aprobacion]
+						,[comentario_aprobador]
+						,[rechazada_por]
+						,[fecha_rechazo]
+						,[cancelada_por]
+						,[fecha_cancelacion]
+					FROM [TECMAMOVIL].[dbo].[solicitudes_ausencia]
+					WHERE autoriza = '${supervisorData[0].supervisor_id}'
+					`,
+				"Error fetching supervisor information",
+				dbs.tecmamovil
+			);
+
+			console.log("Supervisor requests: ", supervisorRequests[0])
+
+			console.log("is supervisor data: ", isSupervisor[0]);
+
+			return
+			if (isSupervisor[0].result && numEmp !== 0 && numEmp !== '0') {
+				const activeEmployees = await executeQuery(
+					`SELECT CB_CODIGO as employeeNum
+						FROM COLABORA
+						WHERE CB_NIVEL3 = '${isSupervisor[0].result.trim()}'
+						AND CB_ACTIVO = 'S'`,
+					"Error fetching employees information",
+					dbs.colabora
+				);
+
+				if (activeEmployees && activeEmployees.length > 0) {
+					console.log("Active employees under supervisor: ", activeEmployees)
+					const employeeNums = activeEmployees
+						.map(emp => `'${emp.employeeNum}'`) // wrap each number in single quotes
+						.join(', ');
+
+					console.log("Employee numbers: ", employeeNums);
+
+					const employeeRequests = await executeQuery(
+						`SELECT No as numEmp, Nombre as name, Carta as type
+							FROM K_Solicitudes
+							WHERE No IN (${employeeNums})
+							AND Pendiente = '0'
+							AND (Carta = 'Vacaciones'
+							or Carta = 'Permiso')`,
+						"Error fetching employee requests information",
+						dbs.kioskotek
+					);
+					if (employeeRequests && employeeRequests.length > 0) {
+
+						return { success: true, message: "Available requests", data: employeeRequests }
+					} else {
+						return { success: true, message: "No requests" }
+					}
+					console.log("Employee requests: ", employeeRequests)
+				}
+				return { success: true, message: "Done", }
+			} else {
+				return { success: false, message: "Done" }
+			}
+
+		}
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
 			const dbs = await selectRegion(region);
 
-			const queryNip = await executeQuery(
-				`SELECT CB_CODIGO, NIP FROM Empleados WHERE CB_CODIGO = '${numEmp}'`,
-				"Error fetching user credentials",
-				dbs.kioskotek
-			);
-			const encNip = queryNip[0];
+			let isActiveQuery;
 
-			const decryptedPassword = decryptOld(encNip.NIP, oldKey);
-
-			if (!encNip || nip !== decryptedPassword) {
-				return {
-					success: false,
-					message: "El usuario no existe o las credenciales son inválidas.",
-				};
+			if (region === "JRZ") {
+				isActiveQuery = `SELECT CB_ACTIVO As active, CB_NIVEL7 as planta_id FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`
+			} else {
+				isActiveQuery = `SELECT CB_ACTIVO As active FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`
 			}
 
+			console.log("1")
 			const isActive = await executeQuery(
-				`SELECT CB_ACTIVO As active FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
+				isActiveQuery,
 				"Error fetching user credentials",
 				dbs.colabora
 			);
+			console.log("2")
+			console.log("Is active: ", isActive)
+
+
+			if (isActive.length === 0) {
+				return {
+					success: false,
+					message: "Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos"
+				}
+			}
+
+			// if(region === "JRZ"){
+			// 	if (isActive[0].planta_id.trim() === "012"){
+			// 		return {
+			// 			success: false,
+			// 			message:
+			// 				"La aplicación se encuentra en mantenimiento por el momento.",
+			// 		};
+			// 	}
+			// }
 
 			if (isActive[0].active === "N")
 				return {
@@ -1168,15 +1366,76 @@ const resolvers = {
 						"Usuario inactivo, contacta con tu departamento de recursos humanos.",
 				};
 
+			console.log("3")
+			const queryNip = await executeQuery(
+				`SELECT CB_CODIGO, NIP, ENCRIPTADA FROM Empleados WHERE CB_CODIGO = '${numEmp}'`,
+				"Error fetching user credentials",
+				dbs.kioskotek
+			);
+			console.log("4")
+
+			const userData = queryNip[0];
+
+			console.log("User data is: ", JSON.stringify(userData, null, 1))
+			if (!userData) {
+				return {
+					success: false,
+					message: "Hubo un problema al solicitar acceso, intenta de nuevo.",
+				};
+			}
+			if (!userData.CB_CODIGO || userData.CB_CODIGO === "") {
+				return {
+					success: false,
+					message: "No tienes registradas credenciales en la plataforma. Si crees que esto es un error, contacta con tu departamento de RH."
+				}
+			}
+
+			let isAuthorized = false;
+
+			if (userData.ENCRIPTADA) {
+				console.log("Encriptada is true")
+				const decryptedPassword = decryptOld(userData.NIP, oldKey);
+
+				if (nip === decryptedPassword) {
+					console.log("Encrypted nip matches ")
+					isAuthorized = true
+				}
+			} else {
+				console.log("Encriptada is FALSE")
+				if (nip === userData.NIP) {
+					console.log("Unencrypted nip matches")
+					isAuthorized = true
+					const encryptedPasswordOld = encryptOld(nip, oldKey);
+
+					await executeQuery(
+						`Update Empleados
+						Set NIP = '${encryptedPasswordOld}',
+						ENCRIPTADA = 1
+						Where
+						CB_CODIGO = '${numEmp}'`,
+						"Error updating NIP",
+						dbs.kioskotek
+					);
+
+				}
+			}
+
+			if (!isAuthorized) {
+				return {
+					success: false,
+					message: "El usuario no existe o las credenciales son inválidas.",
+				};
+			}
+
+			// const name = queryName[0];
 			const queryName = await executeQuery(
 				`SELECT CB_NOMBRES FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
 				"Error fetching user credentials",
 				dbs.colabora
 			);
-			const name = queryName[0];
 
 			const token = jwt.sign(
-				{ id: encNip.CB_CODIGO, name: name.CB_NOMBRES },
+				{ id: userData.CB_CODIGO, name: queryName[0].CB_NOMBRES },
 				process.env.JWT_KEY,
 				{
 					expiresIn: "1h",
@@ -1186,7 +1445,7 @@ const resolvers = {
 			return {
 				success: true,
 				message: "Login successful",
-				data: { token, name: name.CB_NOMBRES },
+				data: { token, name: queryName[0].CB_NOMBRES },
 			};
 		},
 		resetNIP: async (_, { numEmp, rfc, newNIP, region }) => {
@@ -1219,7 +1478,7 @@ const resolvers = {
 				return "Not found";
 			}
 
-			const launchDate = new Date(2025, 3, 17);
+			const launchDate = new Date(2025, 4, 24);
 			const lastLoginDate = new Date(employeeData[0].login_date);
 			console.log(
 				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate}`
@@ -1437,50 +1696,50 @@ const resolvers = {
 			// 	return { pdfFile: "Wait" };
 			// }
 
-			if (letter !== "NIP" && letter !== "AltaIMSS") {
-				let letterQuery;
-				switch (letter) {
-					case "CartaPrestamo":
-						console.log("Caso prestamo");
-						letterQuery = "Prestamo";
-						break;
-					case "CartaGuarderia":
-					case "CartaTrabajo":
-					case "CartaVisa":
-					case "CartaPermiso":
-						letterQuery = letter.substring(5);
-						break;
-					case "PermisoDias":
-						letterQuery = "Permiso";
-						break;
-					case "AjustePrenom":
-						letterQuery = "Ajuste";
-						break;
-					default:
-						letterQuery = letter;
-						break;
-				}
-				const existing = await executeQuery(
-					`SELECT 
-						CASE 
-							WHEN EXISTS (
-								SELECT 1 
-								FROM K_Solicitudes 
-								WHERE No = '${numEmp}'
-								And Carta = '${letterQuery}'
-								And Pendiente = 1
-							) 
-							THEN CAST(1 AS BIT)
-							ELSE CAST(0 AS BIT)
-						END AS existing_requisition;`,
-					"Error retrieving employee information",
-					dbs.kioskotek
-				);
-				// console.log("Existing: ", existing);
-				if (existing[0].existing_requisition) {
-					return { pdfFile: "Existing requisition" };
-				}
-			}
+			// if (letter !== "NIP" && letter !== "AltaIMSS") {
+			// 	let letterQuery;
+			// 	switch (letter) {
+			// 		case "CartaPrestamo":
+			// 			console.log("Caso prestamo");
+			// 			letterQuery = "Prestamo";
+			// 			break;
+			// 		case "CartaGuarderia":
+			// 		case "CartaTrabajo":
+			// 		case "CartaVisa":
+			// 		case "CartaPermiso":
+			// 			letterQuery = letter.substring(5);
+			// 			break;
+			// 		case "PermisoDias":
+			// 			letterQuery = "Permiso";
+			// 			break;
+			// 		case "AjustePrenom":
+			// 			letterQuery = "Ajuste";
+			// 			break;
+			// 		default:
+			// 			letterQuery = letter;
+			// 			break;
+			// 	}
+			// 	const existing = await executeQuery(
+			// 		`SELECT 
+			// 			CASE 
+			// 				WHEN EXISTS (
+			// 					SELECT 1 
+			// 					FROM K_Solicitudes 
+			// 					WHERE No = '${numEmp}'
+			// 					And Carta = '${letterQuery}'
+			// 					And Pendiente = 1
+			// 				) 
+			// 				THEN CAST(1 AS BIT)
+			// 				ELSE CAST(0 AS BIT)
+			// 			END AS existing_requisition;`,
+			// 		"Error retrieving employee information",
+			// 		dbs.kioskotek
+			// 	);
+			// 	// console.log("Existing: ", existing);
+			// 	if (existing[0].existing_requisition) {
+			// 		return { pdfFile: "Existing requisition" };
+			// 	}
+			// }
 
 			// console.log(data);
 			data.coment = coment;
@@ -1565,9 +1824,8 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${
-						region === "TIJ" || region === "SAL" ? project[0] : project
-					}'`,
+					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
+				}'`,
 				"Error obtaining CSC Data",
 				dbs.kioskotek
 			);
@@ -1607,13 +1865,12 @@ const resolvers = {
 					} else {
 						letterType = letter.substring(5);
 					}
-					newFileName = `${
-						letter === "CartaPrestamo"
-							? "CartaSalario"
-							: letter === "CartaPermiso"
+					newFileName = `${letter === "CartaPrestamo"
+						? "CartaSalario"
+						: letter === "CartaPermiso"
 							? "CartaViaje"
 							: letter
-					}_${numEmp} - ${formattedCustom}.pdf`;
+						}_${numEmp} - ${formattedCustom}.pdf`;
 
 					const employeeData = await executeQuery(
 						`Select
@@ -2211,7 +2468,9 @@ const resolvers = {
 				case "Banorte":
 				case "Gafete":
 				case "AltaIMSS":
+					console.log("Datos en directorio de asesor asignado: ", directory[0])
 					mail = directory[0] ? directory[0].csc_advisor_email : defaultCSCMail;
+					console.log("Correo asignado: ", mail)
 					break;
 
 				// Especial
@@ -2697,63 +2956,73 @@ const resolvers = {
 				};
 			}
 		},
-		testMutation: async () => {
-			const numEmp = 99999110;
-			const plant_id = "002";
-			const project = "H99";
-			const letter = "CartaGuarderia";
+		requestAbsence: async (_, { input }) => {
+			try {
 
-			const getFormattedDateTime = () => {
-				const currentDate = new Date();
 
-				const padZero = (num, size = 2) => String(num).padStart(size, "0");
+				const { numEmp, region, type, start_date, end_date, days, motive, comment } = input;
+				const dbs = await selectRegion(region);
+				console.log("Input is: ", JSON.stringify(input, null, 1));
 
-				const year = currentDate.getFullYear();
-				const month = padZero(currentDate.getMonth() + 1); // Months are zero-indexed
-				const day = padZero(currentDate.getDate());
+				// Validate the input
+				if (!numEmp || !region || !type || !start_date || !days) {
+					return {
+						success: false,
+						message: "Input is invalid. Please provide all required fields.",
+					};
+				}
 
-				const hours24 = currentDate.getHours();
-				const minutes = padZero(currentDate.getMinutes());
-				const seconds = padZero(currentDate.getSeconds());
-				const milliseconds = padZero(currentDate.getMilliseconds(), 3); // Milliseconds need 3 digits
+				const startDateSQL = `'${new Date(start_date).toISOString().split("T")[0]}'`;
+				const endDateSQL = end_date ? `'${new Date(end_date).toISOString().split("T")[0]}'` : 'NULL';
 
-				// Generate original format (YYYY-MM-DD HH:MM:SS.mmm)
-				const formattedDateTime = `${year}-${month}-${day} ${padZero(
-					hours24
-				)}:${minutes}:${seconds}.${milliseconds}`;
 
-				// Convert hours to 12-hour format and create custom format (YYYYMMDDhhmm)
-				let hours12 = hours24 % 12 || 12; // Convert 24-hour to 12-hour format
-				const formattedCustom = `${year}${month}${day}${padZero(
-					hours12
-				)}${minutes}`;
+				const authorizerData = await executeQuery(
+					`SELECT CB_NIVEL3 as authorizer FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
+					"Error fetching authorizer",
+					dbs.colabora
+				);
 
-				// Return both formats
-				return { formattedDateTime, formattedCustom };
-			};
+				// console.warn("Employee authorizer: ", authorizerData[0].authorizer)
+				// console.log("Start date: ", startDateSQL, "End date: ", endDateSQL)
 
-			// Example usage
-			const { formattedDateTime, formattedCustom } = getFormattedDateTime();
-			const directory = await executeQuery(
-				`Select
-					CSC_RH.email As hr_advisor_email,
-					CSC_Asesor.email As csc_advisor_email,
-					DIR.RH As hr_id_number
-				From
-					CSC_Directorio As DIR
-					Inner Join CSC_RH on CSC_RH.Codigo = DIR.RH
-					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
-				Where
-					Planta = '${plant_id}'
-					and Proyecto = '${project}'`,
-				"Error obtaining CSC Data",
-				"kioskocentral"
-			);
-			console.log("directory info: ", JSON.stringify(directory[0]));
-			if (directory[0] === undefined) {
-				console.log("No encontro");
+				const query = `INSERT INTO solicitudes_ausencia (
+								id_empleado,
+								tipo_solicitud,
+								fecha_inicio,
+								fecha_fin,
+								fecha_solicitud,
+								autoriza,
+								estado,
+								id_motivo,
+								comentario_empleado,
+								dias_totales
+							)
+							VALUES (
+								'${numEmp}', 
+								'${type}',
+								${startDateSQL},
+								${endDateSQL},
+								GETDATE(),
+								'${authorizerData[0].authorizer.trim()}',
+								1,
+								${motive ? `'${motive}'` : null},
+								${comment ? `'${comment}'` : null},
+								${days});`;
+
+				await executeQuery(query, "Error registering request", dbs.tecmamovil);
+				return {
+					success: true,
+					message: "Se registró la solicitud correctamente.",
+				};
+			} catch (error) {
+				return {
+					success: false,
+					message: "Ocurrió un error al registrar la solicitud.",
+				};
 			}
-			return `${letter}_${numEmp} - ${formattedCustom}.pdf`;
+		},
+		testMutation: async () => {
+			return "Done"
 		},
 	},
 };

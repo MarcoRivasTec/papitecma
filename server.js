@@ -18,6 +18,7 @@ const testPort = 8083;
 const subdomain = "api";
 const domain = "tecmamovilconnect.com";
 let host;
+let localNetHost = false;
 let homeHost = false;
 let tecmaHost = false;
 
@@ -44,6 +45,9 @@ const getHosts = async () => {
 		// authHost = "https://auth.tecmamovilconnect.com";
 	} else if (process.env.HOST === "DEV") {
 		console.log("Host mode set to DEV");
+		const { getLocalIp } = require("./utils/ipaddress");
+		localNetHost = await getLocalIp();
+		console.log("Local IP Address: ", localNetHost);
 		const { getWiFiIPAddressHost } = require("./utils/ipaddress");
 		homeHost = await getWiFiIPAddressHost();
 		console.log("WiFi IP Address: ", homeHost);
@@ -151,6 +155,13 @@ apolloServer.start().then(() => {
 			);
 		});
 
+		if (localNetHost !== false) {
+			app.listen(testPort, localNetHost, () => {
+				console.log(
+					`\nServer running at http://${localNetHost}:${testPort}${apolloServer.graphqlPath}`
+				);
+			});
+		}
 		if (homeHost !== false) {
 			app.listen(testPort, homeHost, () => {
 				console.log(

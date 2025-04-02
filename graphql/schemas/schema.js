@@ -196,6 +196,7 @@ const typeDefs = gql`
 		prestamo: Boolean!
 		initial_week: Int!
 		final_week: Int!
+		max_weeks: Int!
 	}
 
 	type Encuestas {
@@ -278,6 +279,12 @@ const typeDefs = gql`
 		data: EmployeeData
 	}
 
+	type ResponseRequests {
+		success: Boolean! #
+		message: String! #
+		data: [Request]
+	}
+
 	type ResponseLogin {
 		success: Boolean!
 		message: String!
@@ -294,6 +301,23 @@ const typeDefs = gql`
 		ingreso: Date!
 		imss: String!
 		qr: String!
+	}
+
+	type Request {
+		numEmp: String!
+		name: String!
+		type: String!
+	}
+
+	input RequestAbsenceInput {
+		numEmp: String! # ID employee
+		region: String! # Employee region
+		type: String! # Request type
+		start_date: Date! # Initial day date
+		end_date: Date # Last day date
+		days: Int! # Number of days
+		motive: Int # Permission motive
+		comment: String # Employee comment
 	}
 
 	type Query {
@@ -337,6 +361,7 @@ const typeDefs = gql`
 		Encuesta(encuesta: Int!, region: String!): [Encuesta!]!
 		Policies(region: String!): Policies!
 		TestQuery: String
+		IsSupervisor(numEmp: String!, region: String!): ResponseRequests!
 	}
 
 	type Mutation {
@@ -393,6 +418,7 @@ const typeDefs = gql`
 		submitSurvey(input: SubmitSurveyInput!): Response!
 		submitOpinion(input: OpinionInput!): Response!
 		requestQRData(input: QRInput!): ResponseData!
+		requestAbsence(input: RequestAbsenceInput!): Response!
 		testMutation: String
 	}
 `;
