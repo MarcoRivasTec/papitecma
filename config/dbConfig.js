@@ -82,16 +82,16 @@ const configs = {
 			enableArithAbort: true,
 		},
 	},
-	tecma_csa: {
-		user: process.env.DB_USER,
-		password: process.env.DB_PASS,
-		server: process.env.DB_HOST,
-		database: process.env.DB_NAME_7,
-		options: {
-			encrypt: false,
-			enableArithAbort: true,
-		},
-	},
+	// tecma_csa: {
+	// 	user: process.env.DB_USER,
+	// 	password: process.env.DB_PASS,
+	// 	server: process.env.DB_HOST,
+	// 	database: process.env.DB_NAME_7,
+	// 	options: {
+	// 		encrypt: false,
+	// 		enableArithAbort: true,
+	// 	},
+	// },
 };
 
 const poolPromises = {};

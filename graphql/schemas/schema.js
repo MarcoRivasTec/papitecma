@@ -280,8 +280,8 @@ const typeDefs = gql`
 	}
 
 	type ResponseRequests {
-		success: Boolean! #
-		message: String! #
+		success: Boolean! 
+		message: String! 
 		data: [Request]
 	}
 
@@ -304,9 +304,26 @@ const typeDefs = gql`
 	}
 
 	type Request {
+		id: Int!
 		numEmp: String!
 		name: String!
 		type: String!
+		status: String!
+		start_date: Date!
+		end_date: Date
+		request_date: DateTime!
+		total_days: Int!
+		motive : String
+		comment: String
+		pre_approved_by: String
+		pre_approval_date: DateTime
+		approved_by: String
+		approval_date: DateTime
+		approver_comment: String
+		rejected_by: String
+		rejection_date: DateTime
+		cancelled_by: String
+		cancellation_date: DateTime
 	}
 
 	input RequestAbsenceInput {
@@ -318,6 +335,15 @@ const typeDefs = gql`
 		days: Int! # Number of days
 		motive: Int # Permission motive
 		comment: String # Employee comment
+	}
+
+	input HandleAbsenceRequestInput {
+		numEmp: String! # ID employee
+		region: String! # Employee region
+		request_id: Int! # Request ID
+		action: String! # Request action
+		motive: Int # Motive id
+		comment: String # Superior comment
 	}
 
 	type Query {
@@ -361,7 +387,8 @@ const typeDefs = gql`
 		Encuesta(encuesta: Int!, region: String!): [Encuesta!]!
 		Policies(region: String!): Policies!
 		TestQuery: String
-		IsSupervisor(numEmp: String!, region: String!): ResponseRequests!
+		IsSupervisor(numEmp: String!, region: String!): Response!
+		SuperiorRequests(numEmp: String!, region: String!): ResponseRequests!
 	}
 
 	type Mutation {
@@ -419,6 +446,7 @@ const typeDefs = gql`
 		submitOpinion(input: OpinionInput!): Response!
 		requestQRData(input: QRInput!): ResponseData!
 		requestAbsence(input: RequestAbsenceInput!): Response!
+		handleAbsenceRequest(input: HandleAbsenceRequestInput!): Response!
 		testMutation: String
 	}
 `;

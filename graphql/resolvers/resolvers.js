@@ -1154,21 +1154,6 @@ const resolvers = {
 		IsSupervisor: async (_, { numEmp, region }) => {
 			const dbs = await selectRegion(region);
 
-			// const isSupervisor = await executeQuery(
-			// 	`SELECT 
-			// 		CASE 
-			// 			WHEN EXISTS (
-			// 				SELECT 1 
-			// 				FROM NIVEL3
-			// 				WHERE TB_NUMERO = ${numEmp}
-			// 			)
-			// 			THEN CAST(1 AS BIT)
-			// 			ELSE CAST(0 AS BIT)
-			// 		END AS match;`,
-			// 	"Error fetching supervisor information",
-			// 	dbs.colabora
-			// );
-
 			const isSupervisor = await executeQuery(
 				`SELECT 
 					CASE 
@@ -1177,59 +1162,81 @@ const resolvers = {
 							FROM NIVEL3
 							WHERE TB_NUMERO = ${numEmp}
 						)
-						THEN (
-							SELECT TOP 1 TB_CODIGO
-							FROM NIVEL3
-							WHERE TB_NUMERO = ${numEmp}
-						)
-						ELSE 'FALSE'
-					END AS result;`,
+						THEN CAST(1 AS BIT)
+						ELSE CAST(0 AS BIT)
+					END AS match;`,
 				"Error fetching supervisor information",
 				dbs.colabora
 			);
 
-			console.log("is supervisor data: ", isSupervisor[0])
-
-			if (isSupervisor[0].result && numEmp !== 0 && numEmp !== '0') {
-				const activeEmployees = await executeQuery(
-					`SELECT CB_CODIGO as employeeNum
-						FROM COLABORA
-						WHERE CB_NIVEL3 = '${isSupervisor[0].result.trim()}'
-						AND CB_ACTIVO = 'S'`,
-					"Error fetching employees information",
-					dbs.colabora
-				);
-
-				if (activeEmployees && activeEmployees.length > 0) {
-					console.log("Active employees under supervisor: ", activeEmployees)
-					const employeeNums = activeEmployees
-						.map(emp => `'${emp.employeeNum}'`) // wrap each number in single quotes
-						.join(', ');
-
-					console.log("Employee numbers: ", employeeNums);
-
-					const employeeRequests = await executeQuery(
-						`SELECT No as numEmp, Nombre as name, Carta as type
-							FROM K_Solicitudes
-							WHERE No IN (${employeeNums})
-							AND Pendiente = '0'
-							AND (Carta = 'Vacaciones'
-							or Carta = 'Permiso')`,
-						"Error fetching employee requests information",
-						dbs.kioskotek
-					);
-					if (employeeRequests && employeeRequests.length > 0) {
-
-						return { success: true, message: "Available requests", data: employeeRequests }
-					} else {
-						return { success: true, message: "No requests" }
-					}
-					console.log("Employee requests: ", employeeRequests)
-				}
-				return { success: true, message: "Done", }
+			if (isSupervisor && isSupervisor[0].match) {
+				return { success: true, message: "User is a superior" }
 			} else {
-				return { success: false, message: "Done" }
+
+				return { success: false, message: "User is not a superior" }
 			}
+
+			// const isSupervisor = await executeQuery(
+			// 	`SELECT 
+			// 		CASE 
+			// 			WHEN EXISTS (
+			// 				SELECT 1 
+			// 				FROM NIVEL3
+			// 				WHERE TB_NUMERO = ${numEmp}
+			// 			)
+			// 			THEN (
+			// 				SELECT TOP 1 TB_CODIGO
+			// 				FROM NIVEL3
+			// 				WHERE TB_NUMERO = ${numEmp}
+			// 			)
+			// 			ELSE 'FALSE'
+			// 		END AS result;`,
+			// 	"Error fetching supervisor information",
+			// 	dbs.colabora
+			// );
+
+			// console.log("is supervisor data: ", isSupervisor[0])
+
+			// if (isSupervisor[0].result && numEmp !== 0 && numEmp !== '0') {
+			// 	const activeEmployees = await executeQuery(
+			// 		`SELECT CB_CODIGO as employeeNum
+			// 			FROM COLABORA
+			// 			WHERE CB_NIVEL3 = '${isSupervisor[0].result.trim()}'
+			// 			AND CB_ACTIVO = 'S'`,
+			// 		"Error fetching employees information",
+			// 		dbs.colabora
+			// 	);
+
+			// 	if (activeEmployees && activeEmployees.length > 0) {
+			// 		console.log("Active employees under supervisor: ", activeEmployees)
+			// 		const employeeNums = activeEmployees
+			// 			.map(emp => `'${emp.employeeNum}'`) // wrap each number in single quotes
+			// 			.join(', ');
+
+			// 		console.log("Employee numbers: ", employeeNums);
+
+			// 		const employeeRequests = await executeQuery(
+			// 			`SELECT No as numEmp, Nombre as name, Carta as type
+			// 				FROM K_Solicitudes
+			// 				WHERE No IN (${employeeNums})
+			// 				AND Pendiente = '0'
+			// 				AND (Carta = 'Vacaciones'
+			// 				or Carta = 'Permiso')`,
+			// 			"Error fetching employee requests information",
+			// 			dbs.kioskotek
+			// 		);
+			// 		if (employeeRequests && employeeRequests.length > 0) {
+
+			// 			return { success: true, message: "Available requests", data: employeeRequests }
+			// 		} else {
+			// 			return { success: true, message: "No requests" }
+			// 		}
+			// 		console.log("Employee requests: ", employeeRequests)
+			// 	}
+			// 	return { success: true, message: "Done", }
+			// } else {
+			// 	return { success: false, message: "Done" }
+			// }
 
 		},
 		SuperiorRequests: async (_, { numEmp, region }) => {
@@ -1238,45 +1245,102 @@ const resolvers = {
 			const supervisorData = await executeQuery(
 				`SELECT TB_CODIGO as supervisor_id,
 						TB_TEXTO as superior_id
-				FROM NIVEL3`,
+				FROM NIVEL3
+				WHERE TB_NUMERO = '${numEmp}'`,
 				"Error fetching supervisor information",
 				dbs.colabora
 			);
 
-			console.log("Supervisor data: ", supervisorData[0])
+			// console.log("Supervisor data: ", supervisorData[0])
+
+			const motives = await executeQuery(
+				`SELECT * FROM motivos_solicitud`,
+				"Error fetching motives information",
+				dbs.tecmamovil
+			);
+
+			// console.log("\nMotives: ", motives)
+
+			const statuses = await executeQuery(
+				`SELECT * FROM estados_solicitud`,
+				"Error fetching statuses information",
+				dbs.tecmamovil
+			);
+
+			// console.log("\Statuses: ", statuses)
 
 			const supervisorRequests = await executeQuery(
-				`SELECT [id_solicitud]
-						,[id_empleado]
-						,[tipo_solicitud]
-						,[estado]
-						,[fecha_inicio]
-						,[fecha_fin]
-						,[fecha_solicitud]
-						,[dias_totales]
-						,[id_motivo]
-						,[comentario_empleado]
-						,[pre_aprobado_por]
-						,[fecha_pre_aprobacion]
-						,[aprobado_por]
-						,[fecha_aprobacion]
-						,[comentario_aprobador]
-						,[rechazada_por]
-						,[fecha_rechazo]
-						,[cancelada_por]
-						,[fecha_cancelacion]
-					FROM [TECMAMOVIL].[dbo].[solicitudes_ausencia]
-					WHERE autoriza = '${supervisorData[0].supervisor_id}'
-					`,
+				`SELECT [id_solicitud] as id
+						,[id_empleado] as numEmp
+						,[tipo_solicitud] as type
+						,[estado] as status
+						,[fecha_inicio] as start_date
+						,[fecha_fin] as end_date
+						,[fecha_solicitud] as request_date
+						,[dias_totales] as total_days
+						,[id_motivo] as motive
+						,[comentario_empleado] as comment
+						,[pre_aprobado_por] as pre_approved_by
+						,[fecha_pre_aprobacion] as pre_approval_date
+						,[aprobado_por] as approved_by
+						,[fecha_aprobacion] as approval_date
+						,[comentario_aprobador] as approver_comment
+						,[rechazada_por] as rejected_by
+						,[fecha_rechazo] as rejection_date
+						,[cancelada_por] as  cancelled_by
+						,[fecha_cancelacion] as cancellation_date
+					FROM solicitudes_ausencia
+					WHERE autoriza = '${supervisorData[0].supervisor_id.trim()}'`,
 				"Error fetching supervisor information",
 				dbs.tecmamovil
 			);
 
-			console.log("Supervisor requests: ", supervisorRequests[0])
+			// console.log("\n\nSupervisor requests: ", supervisorRequests)
 
-			console.log("is supervisor data: ", isSupervisor[0]);
+			// Create maps for fast lookup
+			const motiveMap = {};
+			const statusMap = {};
 
-			return
+			motives.forEach(m => motiveMap[m.id_motivo] = m.descripcion);
+			statuses.forEach(s => statusMap[s.id_estado] = s.descripcion);
+
+			// Replace codes with descriptions
+			const formattedRequests = supervisorRequests.map(request => ({
+				...request,
+				motive: request.motive_id !== null ? motiveMap[request.motive_id] : null,
+				status: statusMap[request.status]
+			}));
+
+
+			// Create a cache for employee names to avoid repeated queries
+			const employeeNameCache = {};
+
+			// For each request, fetch the full name based on numEmp, using the cache if available.
+			for (let request of formattedRequests) {
+				if (!employeeNameCache[request.numEmp]) {
+					const userFullName = await executeQuery(
+						`SELECT CB_NOMBRES as names,
+								CB_APE_PAT as surname_1,
+								CB_APE_MAT as surname_2
+						FROM COLABORA 
+						WHERE CB_CODIGO = '${request.numEmp}'`,
+						"Error fetching user name info",
+						dbs.colabora
+					);
+
+					if (userFullName && userFullName.length > 0) {
+						const { names, surname_1, surname_2 } = userFullName[0];
+						employeeNameCache[request.numEmp] = `${names} ${surname_1} ${surname_2}`;
+					} else {
+						employeeNameCache[request.numEmp] = null;
+					}
+				}
+				// Append the full name to the request entry
+				request.name = employeeNameCache[request.numEmp];
+			}
+
+
+			return { success: true, message: "Done", data: formattedRequests }
 			if (isSupervisor[0].result && numEmp !== 0 && numEmp !== '0') {
 				const activeEmployees = await executeQuery(
 					`SELECT CB_CODIGO as employeeNum
@@ -3015,6 +3079,99 @@ const resolvers = {
 					message: "Se registró la solicitud correctamente.",
 				};
 			} catch (error) {
+				return {
+					success: false,
+					message: "Ocurrió un error al registrar la solicitud.",
+				};
+			}
+		},
+		handleAbsenceRequest: async (_, { input }) => {
+			try {
+				const { numEmp, region, request_id, action, comment, motive } = input;
+				const dbs = await selectRegion(region);
+				console.log("Input is: ", JSON.stringify(input, null, 1));
+
+				// Validate the input
+				if (!numEmp || !region || !request_id || !action) {
+					return {
+						success: false,
+						message: "Input is invalid. Please provide all required fields.",
+					};
+				}
+
+				const approverData = await executeQuery(
+					`SELECT TB_CODIGO as supervisor_id,
+							TB_TEXTO as superior_id
+					FROM NIVEL3
+					WHERE TB_NUMERO = '${numEmp}'`,
+					"Error fetching supervisor information",
+					dbs.colabora
+				);
+
+				console.warn("Employee authorizer: ", approverData[0])
+
+				switch (action) {
+					case "approve":
+
+
+						if (!approverData[0].superior_id || approverData[0].superior_id.trim === "") {
+							console.warn("\n\nUser doesn't have superior, approving...\n")
+							await executeQuery(`UPDATE solicitudes_ausencia
+											SET estado = 3,
+												aprobado_por = '${approverData[0].supervisor_id}',
+												fecha_aprobacion = GETDATE()
+											WHERE id_solicitud = ${request_id}`,
+								"Error approving request",
+								dbs.tecmamovil);
+
+							return { success: true, message: "Se registró la solicitud correctamente.", }
+						}
+
+						const requestData = await executeQuery(`SELECT * FROM solicitudes_ausencia
+														WHERE id_solicitud = ${request_id}`,
+							"Error fetching request data",
+							dbs.tecmamovil);
+
+						console.warn("Request data: ", requestData[0])
+
+						if (requestData[0].pre_aprobado_por) {
+							console.warn("\n\nRequest has been pre-approved, approving...\n")
+							await executeQuery(`UPDATE solicitudes_ausencia
+								SET estado = 3,
+								aprobado_por = '${approverData[0].supervisor_id}',
+								fecha_aprobacion = GETDATE()
+								WHERE id_solicitud = ${request_id}`,
+								"Error registering request",
+								dbs.tecmamovil);
+						} else {
+							console.warn("\n\nRequest is pending, pre-approving...\n")
+							await executeQuery(`UPDATE solicitudes_ausencia
+												SET estado = 2,
+													pre_aprobado_por = '${approverData[0].supervisor_id}',
+													fecha_pre_aprobacion = GETDATE()
+												WHERE id_solicitud = ${request_id}`,
+								"Error registering request",
+								dbs.tecmamovil);
+						}
+
+						return {
+							success: true,
+							message: "Se registró la solicitud correctamente.",
+						};
+					case "reject":
+						return { success: false, message: "Reject" }
+
+					case "cancel":
+						return { success: false, message: "Cancel" }
+
+					default:
+						console.log("No action given, cancelling...")
+						return { success: false, message: "No se definió una acción" }
+
+				}
+
+			} catch (error) {
+				console.log("Error handling absence request: ", error)
 				return {
 					success: false,
 					message: "Ocurrió un error al registrar la solicitud.",
