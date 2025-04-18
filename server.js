@@ -15,10 +15,10 @@ const { ApolloServerPluginLandingPageDisabled } = require("apollo-server-core");
 const app = express();
 const port = 443;
 const testPort = 8083;
+const internalPort = 50003;
 const subdomain = "api";
 const domain = "tecmamovilconnect.com";
 let host;
-let localNetHost = false;
 let homeHost = false;
 let tecmaHost = false;
 
@@ -26,13 +26,13 @@ process.env.HOST === "PRODUCTION" && console.log("Loading SSL Cert");
 const sslOptions =
 	process.env.HOST === "PRODUCTION"
 		? {
-				key: fs.readFileSync(
-					"C:/TECMA Services/Certificates/TECMA Movil Connect/privkey.pem"
-				),
-				cert: fs.readFileSync(
-					"C:/TECMA Services/Certificates/TECMA Movil Connect/fullchain.pem"
-				),
-		  }
+			key: fs.readFileSync(
+				"C:/TECMA Services/Certificates/TECMA Movil Connect/privkey.pem"
+			),
+			cert: fs.readFileSync(
+				"C:/TECMA Services/Certificates/TECMA Movil Connect/fullchain.pem"
+			),
+		}
 		: null;
 
 const getHosts = async () => {
@@ -162,6 +162,7 @@ apolloServer.start().then(() => {
 				);
 			});
 		}
+
 		if (homeHost !== false) {
 			app.listen(testPort, homeHost, () => {
 				console.log(
@@ -180,8 +181,16 @@ apolloServer.start().then(() => {
 		console.log(`QL applied to: "/"`);
 		apolloServer.applyMiddleware({ app, path: `/` });
 		console.log("Server starting in production mode");
-		https.createServer(sslOptions, app).listen(port, () => {
-			console.log(`Server running securely on ${host}`);
+		//https.createServer(sslOptions, app).listen(port, () => {
+		//	console.log(`Server running securely on ${host}`);
+		//});
+		http.createServer(app).listen(internalPort, () => {
+			console.log(
+				`\nUsing port: ${internalPort}`
+			);
+			console.log(
+				`\nServer running on and http://api.tecmamovilconnect.com/`
+			);
 		});
 	} else {
 		console.log(`Error starting server, no host mode recognized`);

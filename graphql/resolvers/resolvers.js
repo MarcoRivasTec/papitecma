@@ -1155,7 +1155,7 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 
 			const isSupervisor = await executeQuery(
-				`SELECT 
+				`SELECT
 					CASE 
 						WHEN EXISTS (
 							SELECT 1 
@@ -1242,14 +1242,14 @@ const resolvers = {
 		SuperiorRequests: async (_, { numEmp, region }) => {
 			const dbs = await selectRegion(region);
 
-			const supervisorData = await executeQuery(
-				`SELECT TB_CODIGO as supervisor_id,
-						TB_TEXTO as superior_id
-				FROM NIVEL3
-				WHERE TB_NUMERO = '${numEmp}'`,
-				"Error fetching supervisor information",
-				dbs.colabora
-			);
+			// const supervisorData = await executeQuery(
+			// 	`SELECT TB_CODIGO as supervisor_id,
+			// 			TB_TEXTO as superior_id
+			// 	FROM NIVEL3
+			// 	WHERE TB_NUMERO = '${numEmp}'`,
+			// 	"Error fetching supervisor information",
+			// 	dbs.colabora
+			// );
 
 			// console.log("Supervisor data: ", supervisorData[0])
 
@@ -1290,12 +1290,12 @@ const resolvers = {
 						,[cancelada_por] as  cancelled_by
 						,[fecha_cancelacion] as cancellation_date
 					FROM solicitudes_ausencia
-					WHERE autoriza = '${supervisorData[0].supervisor_id.trim()}'`,
+					WHERE autoriza = '${numEmp}'`,
 				"Error fetching supervisor information",
 				dbs.tecmamovil
 			);
 
-			// console.log("\n\nSupervisor requests: ", supervisorRequests)
+			console.warn("\n\nSupervisor requests: ", supervisorRequests)
 
 			// Create maps for fast lookup
 			const motiveMap = {};
@@ -1583,19 +1583,31 @@ const resolvers = {
 					if (!isValid) {
 						return "Invalid NIP";
 					}
-					// console.log("isValid: ", isValid);
+					console.log("New nip is: ", newNIP);
 					const encryptedPasswordOld = encryptOld(newNIP, oldKey);
-					// console.log("Encrypted password: ", encryptedPasswordOld);
+					console.log("Encrypted password: ", encryptedPasswordOld);
+					console.log("Unencrypted new password: ", decryptOld(encryptedPasswordOld, oldKey));
 
-					await executeQuery(
-						`Update Empleados
-						Set NIP = '${encryptedPasswordOld}'
-						Where
-							CB_CODIGO = ${numEmp}
-							And RFC = '${rfc}'`,
-						"Error updating measurement",
+					const employeeNIPReset = await executeQuery(
+						`UPDATE Empleados
+						SET NIP = '${encryptedPasswordOld}',
+						ENCRIPTADA = 1
+						WHERE CB_CODIGO = '${numEmp}'`,
+						"Error resetting employee nip",
 						dbs.kioskotek
 					);
+
+					console.log("Employee NIP reset: ", employeeNIPReset);
+
+					// await executeQuery(
+					// 	`Update Empleados
+					// 	Set NIP = '${encryptedPasswordOld}'
+					// 	Where
+					// 		CB_CODIGO = '${numEmp}'
+					// 		And RFC = '${rfc}'`,
+					// 	"Error updating measurement",
+					// 	dbs.kioskotek
+					// );
 					return "Success";
 				}
 			}
@@ -3022,8 +3034,6 @@ const resolvers = {
 		},
 		requestAbsence: async (_, { input }) => {
 			try {
-
-
 				const { numEmp, region, type, start_date, end_date, days, motive, comment } = input;
 				const dbs = await selectRegion(region);
 				console.log("Input is: ", JSON.stringify(input, null, 1));
@@ -3040,11 +3050,22 @@ const resolvers = {
 				const endDateSQL = end_date ? `'${new Date(end_date).toISOString().split("T")[0]}'` : 'NULL';
 
 
-				const authorizerData = await executeQuery(
-					`SELECT CB_NIVEL3 as authorizer FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
-					"Error fetching authorizer",
+				// const approverData = await executeQuery(
+				// 	`SELECT CB_NIVEL3 as approver FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
+				// 	"Error fetching approver",
+				// 	dbs.colabora
+				// );
+
+				const approverData = await executeQuery(
+					`SELECT N3.TB_NUMERO As approver
+					FROM COLABORA As C 
+					INNER JOIN NIVEL3 As N3 ON C.CB_NIVEL3 = N3.TB_CODIGO
+					WHERE CB_CODIGO = '${numEmp}'`,
+					"Error fetching approver",
 					dbs.colabora
 				);
+
+				// console.warn("Approver data: ", approverData[0])
 
 				// console.warn("Employee authorizer: ", authorizerData[0].authorizer)
 				// console.log("Start date: ", startDateSQL, "End date: ", endDateSQL)
@@ -3067,11 +3088,12 @@ const resolvers = {
 								${startDateSQL},
 								${endDateSQL},
 								GETDATE(),
-								'${authorizerData[0].authorizer.trim()}',
+								'${approverData[0].approver.toString().trim()}',
 								1,
 								${motive ? `'${motive}'` : null},
 								${comment ? `'${comment}'` : null},
 								${days});`;
+				// console.warn("Query is: ", query)
 
 				await executeQuery(query, "Error registering request", dbs.tecmamovil);
 				return {
@@ -3079,6 +3101,7 @@ const resolvers = {
 					message: "Se registró la solicitud correctamente.",
 				};
 			} catch (error) {
+				console.error("Request absence caught error: ", error)
 				return {
 					success: false,
 					message: "Ocurrió un error al registrar la solicitud.",
@@ -3112,42 +3135,108 @@ const resolvers = {
 
 				switch (action) {
 					case "approve":
+						const formatISOToUTCDateTime = (isoString) => {
+							const date = new Date(isoString);
 
+							const pad = (n) => n.toString().padStart(2, '0');
+							const padMs = (n) => n.toString().padStart(3, '0');
 
-						if (!approverData[0].superior_id || approverData[0].superior_id.trim === "") {
-							console.warn("\n\nUser doesn't have superior, approving...\n")
-							await executeQuery(`UPDATE solicitudes_ausencia
-											SET estado = 3,
-												aprobado_por = '${approverData[0].supervisor_id}',
-												fecha_aprobacion = GETDATE()
-											WHERE id_solicitud = ${request_id}`,
-								"Error approving request",
-								dbs.tecmamovil);
-
-							return { success: true, message: "Se registró la solicitud correctamente.", }
+							return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+								`${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}.${padMs(date.getUTCMilliseconds())}`;
 						}
+
+
 
 						const requestData = await executeQuery(`SELECT * FROM solicitudes_ausencia
 														WHERE id_solicitud = ${request_id}`,
 							"Error fetching request data",
 							dbs.tecmamovil);
 
-						console.warn("Request data: ", requestData[0])
+						console.warn("Request data is: ", requestData)
 
-						if (requestData[0].pre_aprobado_por) {
+						if (!approverData[0].superior_id || approverData[0].superior_id.trim === "") {
+							console.warn("\n\nUser doesn't have superior, approving...\n")
+							await executeQuery(`UPDATE solicitudes_ausencia
+											SET estado = 3,
+												aprobado_por = '${numEmp}',
+												fecha_aprobacion = GETDATE()
+											WHERE id_solicitud = ${request_id}`,
+								"Error approving request",
+								dbs.tecmamovil);
+
+							// await executeQuery(`INSERT INTO VACAPLAN (CB_CODIGO, VP_FEC_INI, VP_FEC_FIN, VP_DIAS, VP_SOL_COM, VP_SOL_USR, VP_SOL_FEC)
+							const insertQuery = `SET IDENTITY_INSERT VACAPLAN ON;
+									INSERT INTO VACAPLAN (CB_CODIGO, VP_FEC_INI, VP_FEC_FIN, VP_DIAS, VP_SOL_COM, VP_SOL_USR, VP_SOL_FEC, VP_STATUS, VP_AUT_COM, VP_AUT_USR, VP_AUT_FEC, VP_NOMYEAR, VP_NOMTIPO, VP_NOMNUME, VP_SAL_ANT, VP_SAL_PRO, VP_PAGO_US, LLAVE)
+									VALUES(
+										${+requestData[0].id_empleado},
+										'${formatISOToUTCDateTime(requestData[0].fecha_inicio)}',
+										'${formatISOToUTCDateTime(requestData[0].fecha_fin)}',
+										${requestData[0].dias_totales},
+										'${requestData[0].comentario_empleado || ""}',
+										624,
+										GETDATE(),
+										0,
+										'',
+										0,
+										GETDATE(),
+										0,
+										0,
+										0,
+										0,
+										0,
+										1,
+										1111
+									)
+									SET IDENTITY_INSERT VACAPLAN OFF;`;
+							console.log("Query is: ", insertQuery)
+							await executeQuery(insertQuery,
+								"Error approving request",
+								dbs.colabora);
+
+							return { success: true, message: "Se registró la solicitud correctamente.", }
+						}
+
+						if (requestData[0].pre_aprobado_por && requestData[0].pre_aprobado_por.trim() !== "") {
 							console.warn("\n\nRequest has been pre-approved, approving...\n")
 							await executeQuery(`UPDATE solicitudes_ausencia
 								SET estado = 3,
-								aprobado_por = '${approverData[0].supervisor_id}',
+								aprobado_por = '${numEmp}',
 								fecha_aprobacion = GETDATE()
 								WHERE id_solicitud = ${request_id}`,
 								"Error registering request",
 								dbs.tecmamovil);
+
+							await executeQuery(`INSERT INTO VACAPLAN
+									VALUES(
+										'${requestData[0].id_empleado}',
+										${requestData[0].fecha_inicio},
+										${requestData[0].fecha_fin},
+										${requestData[0].dias_totales},
+										${requestData[0].comentario_empleado || null},
+										'Test Form',
+										624,
+										GETDATE(),
+										0,
+										'',
+										0,
+										GETDATE(),
+										0,
+										0,
+										0,
+										0,
+										0,
+										1,
+										1111
+									)`,
+								"Error approving request",
+								dbs.colabora);
+
 						} else {
 							console.warn("\n\nRequest is pending, pre-approving...\n")
 							await executeQuery(`UPDATE solicitudes_ausencia
 												SET estado = 2,
-													pre_aprobado_por = '${approverData[0].supervisor_id}',
+													autoriza = '${approverData[0].superior_id}',
+													pre_aprobado_por = '${numEmp}',
 													fecha_pre_aprobacion = GETDATE()
 												WHERE id_solicitud = ${request_id}`,
 								"Error registering request",
@@ -3160,14 +3249,11 @@ const resolvers = {
 						};
 					case "reject":
 						return { success: false, message: "Reject" }
-
 					case "cancel":
 						return { success: false, message: "Cancel" }
-
 					default:
 						console.log("No action given, cancelling...")
 						return { success: false, message: "No se definió una acción" }
-
 				}
 
 			} catch (error) {
