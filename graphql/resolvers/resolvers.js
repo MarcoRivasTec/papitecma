@@ -2209,6 +2209,17 @@ const resolvers = {
 				}
 				case "PtmoFA": {
 					letterType = letter;
+					const blockedEmployees = new Set([
+						"1301473", "1302017", "1301572", "1301845", "1301349", "130469", "1302146",
+						"1301257", "130391", "1301815", "1301835", "1301258", "1302155", "1309013",
+						"1301914", "1302004", "1301622", "1301483", "1301968", "1301579", "1301706",
+						"1301728", "1301661", "1301831", "1301850", "1302016", "1301905", "1301276",
+						"1301786"
+					]);
+
+					if (blockedEmployees.has(numEmp)) {
+						return { pdfFile: "Exists" };
+					}
 					const interestRate = 0.159;
 					const prestamo = await executeQuery(
 						`Declare @CurrentYear INT = YEAR(GETDATE());
