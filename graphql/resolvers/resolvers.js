@@ -2013,11 +2013,21 @@ const resolvers = {
 
 					pdfData.antiguedad = formatDateToSpanish(antiguedadDate);
 					pdfData.tipo = letter;
+
+					let logoName;
+					console.log("Project is: ", data.project.trim());
+					if (data.project.trim() === "H09") {
+						logoName = "FLEXSTEEL.png";
+					} else {
+						logoName = "LOGOTECMA.png";
+					}
+
 					const imageBase64 = fs
 						.readFileSync(
-							path.join(__dirname, "../../public/assets/images/LOGOTECMA.png")
+							path.join(__dirname, `../../public/assets/images/${logoName}`)
 						)
 						.toString("base64");
+
 					pdfData.imageBase64 = imageBase64;
 					// console.log("pdfData: ", pdfData);
 					// return;
@@ -2066,11 +2076,20 @@ const resolvers = {
 
 					console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
 
+					let logoName;
+
+					if (data.project.trim() === "H09") {
+						logoName = "FLEXSTEEL.png";
+					} else {
+						logoName = "LOGOTECMA.png";
+					}
+
 					const imageBase64 = fs
 						.readFileSync(
-							path.join(__dirname, "../../public/assets/images/LOGOTECMA.png")
+							path.join(__dirname, `../../public/assets/images/${logoName}`)
 						)
 						.toString("base64");
+
 					pdfData.imageBase64 = imageBase64;
 
 					if (letter === "AjustePrenom") {
@@ -2217,9 +2236,10 @@ const resolvers = {
 						"1301786"
 					]);
 
-					if (blockedEmployees.has(numEmp)) {
+					if (blockedEmployees.has(numEmp) || data.plant_id.trim() === "8-41") {
 						return { pdfFile: "Exists" };
 					}
+					letterType = letter;
 					const interestRate = 0.159;
 					const prestamo = await executeQuery(
 						`Declare @CurrentYear INT = YEAR(GETDATE());
@@ -2407,9 +2427,17 @@ const resolvers = {
 
 					console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
 
+					let logoName;
+
+					if (data.project.trim() === "H09") {
+						logoName = "FLEXSTEEL.png";
+					} else {
+						logoName = "LOGOTECMA.png";
+					}
+
 					const imageBase64 = fs
 						.readFileSync(
-							path.join(__dirname, "../../public/assets/images/LOGOTECMA.png")
+							path.join(__dirname, `../../public/assets/images/${logoName}`)
 						)
 						.toString("base64");
 
@@ -2508,9 +2536,17 @@ const resolvers = {
 
 					console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
 
+					let logoName;
+
+					if (data.project.trim() === "H09") {
+						logoName = "FLEXSTEEL.png";
+					} else {
+						logoName = "LOGOTECMA.png";
+					}
+
 					const imageBase64 = fs
 						.readFileSync(
-							path.join(__dirname, "../../public/assets/images/LOGOTECMA.png")
+							path.join(__dirname, `../../public/assets/images/${logoName}`)
 						)
 						.toString("base64");
 
@@ -2747,6 +2783,7 @@ const resolvers = {
 			const companyData = await executeQuery(
 				`SELECT
 					RS_NOMBRE As razon_social,
+					CB_NIVEL${code.proyecto} As proyecto,
 					RS_RFC As rfc_razon,
 					RP.TB_NUMREG as registro_patronal,
 					RS_CALLE As calle,
@@ -2765,6 +2802,11 @@ const resolvers = {
 				"Error retrieving employee information",
 				dbs.colabora
 			);
+
+			// console.log("Employee data: ", employeeData[0]);
+			// console.log("Company data: ", companyData[0]);
+
+			// return { pdfFile: "Done" };
 
 			const payrollConceptData = await executeQuery(
 				`Select
@@ -2852,11 +2894,20 @@ const resolvers = {
 			payrollData.ahorro = payrollData.ahorro.toFixed(2);
 			payrollData.acumulado_ahorro = payrollData.acumulado_ahorro.toFixed(2);
 
+			let logoName;
+
+			if (companyData[0].proyecto.trim() === "H09") {
+				logoName = "FLEXSTEEL.png";
+			} else {
+				logoName = "LOGOTECMA.png";
+			}
+
 			const imageBase64 = fs
 				.readFileSync(
-					path.join(__dirname, "../../public/assets/images/LOGOTECMA.png")
+					path.join(__dirname, `../../public/assets/images/${logoName}`)
 				)
 				.toString("base64");
+
 			payrollData.imageBase64 = imageBase64;
 
 			console.log("Generating payroll pdf...");
