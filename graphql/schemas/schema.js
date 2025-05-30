@@ -40,6 +40,7 @@ const typeDefs = gql`
 		puesto_id: String!
 		turno: String!
 		clasificacion: String!
+		restricted_sections: [String!]
 	}
 
 	type Identificacion {

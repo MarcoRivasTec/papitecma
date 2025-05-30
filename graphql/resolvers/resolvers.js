@@ -187,6 +187,7 @@ const resolvers = {
 						PLANTA.TB_ELEMENT As planta,
 						CB.CB_NIVEL${code.planta} As planta_id,
 						AREA.TB_ELEMENT As area,
+						CB.CB_NIVEL${code.area} As area_id,
 						CB.CB_NIVEL${code.proyecto} As proyecto,
 						SUPERV.TB_ELEMENT As supervisor,
 						T.TP_DESCRIP As nomina,
@@ -202,26 +203,45 @@ const resolvers = {
 				left join NIVEL${code.planta} as PLANTA on CB.CB_NIVEL${code.planta} = PLANTA.TB_CODIGO
 				left join TPERIODO as T on CB.CB_NOMINA = T.TP_TIPO
 				where CB.CB_CODIGO = '${numEmp}'`,
-				"Error fetching user card info",
+				"Error fetching user info",
 				dbs.colabora
 			);
 
+			const restrictedSections = await executeQuery(`
+				SELECT DISTINCT s.section_name
+				FROM MenuAccessRestrictions AS mar
+				INNER JOIN Sections AS s ON mar.section_id = s.section_id
+				LEFT JOIN Regions AS r ON mar.region_id = r.region_id
+				WHERE 
+					mar.is_active = 1
+					AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
+					AND (mar.region_id IS NULL OR r.region_code = '${region}')
+					AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
+					AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
+					AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
+					AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
+				"Error fetching restricted sections for user",
+				dbs.tecmamovil)
+
+			console.log("Restricted sections: ", restrictedSections);
+
 			// Register log in to K_Log
-			await executeQuery(
-				`DECLARE @currentDate DATETIME = GETDATE();
-				INSERT INTO K_Log (No, Fecha, Planta, Proyecto, Tipo)
-				Values (
-					'${numEmp}',
-					@currentDate,
-					'${userInfo[0].planta_id.trim()}',
-					'${(region === "TIJ" || region === "SAL") ? userInfo[0].planta_id.charAt(0) : userInfo[0].proyecto.trim()}',
-					'Login'
-					)`,
-				"Error registering log in",
-				dbs.kioskotek
-			);
+			// await executeQuery(
+			// 	`DECLARE @currentDate DATETIME = GETDATE();
+			// 	INSERT INTO K_Log (No, Fecha, Planta, Proyecto, Tipo)
+			// 	Values (
+			// 		'${numEmp}',
+			// 		@currentDate,
+			// 		'${userInfo[0].planta_id.trim()}',
+			// 		'${(region === "TIJ" || region === "SAL") ? userInfo[0].planta_id.charAt(0) : userInfo[0].proyecto.trim()}',
+			// 		'Login'
+			// 		)`,
+			// 	"Error registering log in",
+			// 	dbs.kioskotek
+			// );
 			// console.log("Info: ", JSON.stringify(userInfo, null, 1));
-			return userInfo[0];
+			// return userInfo[0];
+			return { ...userInfo[0], restricted_sections: restrictedSections.map(section => section.section_name) };
 			// return {
 			// 	apellido_mat: returnValue(query[0].CB_APE_MAT),
 			// 	apellido_pat: returnValue(query[0].CB_APE_PAT),
