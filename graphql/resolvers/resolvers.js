@@ -1445,13 +1445,13 @@ const resolvers = {
 				};
 			}
 
-			if (isActive[0].project.trim() === "H75") {
-				return {
-					success: false,
-					message:
-						"Por el momento el sistema se encuentra en mantenimiento, por favor intenta más tarde.",
-				};
-			}
+			// if (isActive[0].project.trim() === "H75") {
+			// 	return {
+			// 		success: false,
+			// 		message:
+			// 			"Por el momento el sistema se encuentra en mantenimiento, por favor intenta más tarde.",
+			// 	};
+			// }
 
 			const queryNip = await executeQuery(
 				`SELECT CB_CODIGO, NIP, ENCRIPTADA FROM Empleados WHERE CB_CODIGO = '${numEmp}'`,
@@ -1518,6 +1518,14 @@ const resolvers = {
 				"Error fetching user credentials",
 				dbs.colabora
 			);
+
+			await executeQuery(
+				`INSERT INTO K_log (No, Fecha, Planta, Proyecto, Tipo)
+				Values ('${numEmp}', GETDATE(), '${queryName[0].plant}', '${queryName[0].project}', 'Login')
+				`,
+				"Error logging user access",
+				dbs.kioskotek
+			)
 
 			const token = jwt.sign(
 				{ id: userData.CB_CODIGO, name: queryName[0].CB_NOMBRES },
@@ -2097,9 +2105,11 @@ const resolvers = {
 					pdfData.tipo = letter;
 
 					let logoName;
-					console.log("Project is: ", data.project.trim());
+					// console.log("Project is: ", data.project.trim());
 					if (data.project.trim() === "H09") {
 						logoName = "FLEXSTEEL.png";
+					} else if (data.project.trim() === "H75") {
+						logoName = "CLEAR.png";
 					} else {
 						logoName = "LOGOTECMA.png";
 					}
