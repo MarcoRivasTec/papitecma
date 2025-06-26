@@ -1406,6 +1406,12 @@ const resolvers = {
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
+			if (+numEmp > 2147483647 || +numEmp < 0) {
+				return {
+					success: false,
+					message: "Número de empleado inválido."
+				};
+			}
 			const dbs = await selectRegion(region);
 
 			let code = {};
@@ -1542,6 +1548,9 @@ const resolvers = {
 			};
 		},
 		resetNIP: async (_, { numEmp, rfc, newNIP, region }) => {
+			if (+numEmp > 2147483647 || +numEmp < 0) {
+				return "Not found";
+			}
 			const dbs = await selectRegion(region);
 
 			const employeeData = await executeQuery(
