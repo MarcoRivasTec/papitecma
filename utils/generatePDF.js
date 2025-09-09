@@ -5,8 +5,13 @@ const handlebars = require("handlebars");
 
 // Cartas: guarderia, visa, prestamo, trabajo, permiso
 async function generateLetterPDF({ data }) {
+	// console.log("Generating Letter pdf with data: ", data);
 	handlebars.registerHelper("eq", function (a, b) {
 		return a === b;
+	});
+
+	handlebars.registerHelper("notEq", function (a, b) {
+		return a !== b;
 	});
 
 	handlebars.registerHelper("orEquals", function (variable, ...args) {
@@ -36,6 +41,8 @@ async function generateLetterPDF({ data }) {
 
 	await page.setContent(htmlContent, { waitUntil: "networkidle0" });
 
+	// const outputDir = path.join(__dirname, "../pdfs/");
+	// const outputPath = path.join(outputDir, `Letter.pdf`);
 	// await page.pdf({
 	// 	path: outputPath, // Output path
 	// 	format: "LETTER", // Paper format

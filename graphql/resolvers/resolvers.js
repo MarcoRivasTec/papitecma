@@ -221,7 +221,7 @@ const resolvers = {
 					AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
 					AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
 				"Error fetching restricted sections for user",
-				dbs.tecmamovil)
+				"tecmamovilcentral")
 
 			console.log("Restricted sections: ", restrictedSections);
 
@@ -1406,57 +1406,64 @@ const resolvers = {
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
-			const dbs = await selectRegion(region);
-
-			let isActiveQuery;
-
-			if (region === "JRZ") {
-				isActiveQuery = `SELECT CB_ACTIVO As active, CB_NIVEL7 as planta_id FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`
-			} else {
-				isActiveQuery = `SELECT CB_ACTIVO As active FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`
-			}
-
-			console.log("1")
-			const isActive = await executeQuery(
-				isActiveQuery,
-				"Error fetching user credentials",
-				dbs.colabora
-			);
-			console.log("2")
-			console.log("Is active: ", isActive)
-
-
-			if (isActive.length === 0) {
+			if (+numEmp > 2147483647 || +numEmp < 0) {
 				return {
 					success: false,
-					message: "Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos"
+					message: "Número de empleado inválido."
+				};
+			}
+			const dbs = await selectRegion(region);
+
+			let code = {};
+			switch (region) {
+				case "JRZ":
+				case "MTY":
+				case "AMX": {
+					code.supervisor = "3";
+					code.area = "5";
+					code.proyecto = "0";
+					code.planta = "7";
+					break;
+				}
+				case "SAL":
+				case "TIJ": {
+					code.supervisor = "8";
+					code.proyecto = "5";
+					code.area = "6";
+					code.planta = "1";
+					break;
 				}
 			}
 
-			// if(region === "JRZ"){
-			// 	if (isActive[0].planta_id.trim() === "012"){
-			// 		return {
-			// 			success: false,
-			// 			message:
-			// 				"La aplicación se encuentra en mantenimiento por el momento.",
-			// 		};
-			// 	}
-			// }
+			const isActiveQuery = `SELECT CB_ACTIVO As active, CB_NIVEL${code.proyecto} As project  FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`
 
-			if (isActive[0].active === "N")
+			const isActive = await executeQuery(
+				isActiveQuery,
+				"Error fetching user status",
+				dbs.colabora
+			);
+
+			if (isActive.length === 0 || isActive[0].active === "N") {
 				return {
 					success: false,
 					message:
-						"Usuario inactivo, contacta con tu departamento de recursos humanos.",
+						"Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos.",
 				};
+			}
 
-			console.log("3")
+			// if (isActive[0].project.trim() === "H75") {
+			// 	return {
+			// 		success: false,
+			// 		message:
+			// 			"Por el momento el sistema se encuentra en mantenimiento, por favor intenta más tarde.",
+			// 	};
+			// }
+
 			const queryNip = await executeQuery(
 				`SELECT CB_CODIGO, NIP, ENCRIPTADA FROM Empleados WHERE CB_CODIGO = '${numEmp}'`,
 				"Error fetching user credentials",
 				dbs.kioskotek
 			);
-			console.log("4")
 
 			const userData = queryNip[0];
 
@@ -1518,6 +1525,14 @@ const resolvers = {
 				dbs.colabora
 			);
 
+			await executeQuery(
+				`INSERT INTO K_log (No, Fecha, Planta, Proyecto, Tipo)
+				Values ('${numEmp}', GETDATE(), '${queryName[0].plant}', '${queryName[0].project}', 'Login')
+				`,
+				"Error logging user access",
+				dbs.kioskotek
+			)
+
 			const token = jwt.sign(
 				{ id: userData.CB_CODIGO, name: queryName[0].CB_NOMBRES },
 				process.env.JWT_KEY,
@@ -1533,6 +1548,9 @@ const resolvers = {
 			};
 		},
 		resetNIP: async (_, { numEmp, rfc, newNIP, region }) => {
+			if (+numEmp > 2147483647 || +numEmp < 0) {
+				return "Not found";
+			}
 			const dbs = await selectRegion(region);
 
 			const employeeData = await executeQuery(
@@ -1936,8 +1954,8 @@ const resolvers = {
 			function formatDateToSpanish(dateString) {
 				// Parse the date and convert it to local time
 				const localDate = new Date(dateString);
-				console.log("Date string is: ", dateString);
-				console.log("Local date string is: ", localDate);
+				// console.log("Date string is: ", dateString);
+				// console.log("Local date string is: ", localDate);
 
 				const options = {
 					year: "numeric",
@@ -1968,6 +1986,27 @@ const resolvers = {
 							: letter
 						}_${numEmp} - ${formattedCustom}.pdf`;
 
+					let code = {};
+					switch (region) {
+						case "JRZ":
+						case "MTY":
+						case "AMX": {
+							code.supervisor = "3";
+							code.area = "5";
+							code.proyecto = "0";
+							code.planta = "7";
+							break;
+						}
+						case "SAL":
+						case "TIJ": {
+							code.supervisor = "8";
+							code.proyecto = "5";
+							code.area = "6";
+							code.planta = "1";
+							break;
+						}
+					}
+
 					const employeeData = await executeQuery(
 						`Select
 							CB_NOMBRES As nombres,
@@ -1979,17 +2018,24 @@ const resolvers = {
 							TU_DESCRIP As jornada,
 							CB_FEC_ANT As antiguedad,
 							CB_SEGSOC As seguro_social,
-							CB_SALARIO As salario
+							CB_SALARIO As salario,
+							CB_NIVEL${code.proyecto} As id_proyecto,
+							PLANTA.TB_ELEMENT AS nombre_planta
 						From
 							COLABORA
 							INNER JOIN PUESTO ON PUESTO.PU_CODIGO = COLABORA.CB_PUESTO
 							INNER JOIN RPATRON ON RPATRON.TB_CODIGO = COLABORA.CB_PATRON
 							INNER JOIN TURNO ON TURNO.TU_CODIGO = COLABORA.CB_TURNO
+							INNER JOIN NIVEL${code.planta} AS PLANTA ON PLANTA.TB_CODIGO = COLABORA.CB_NIVEL${code.planta}
 						Where
 							CB_CODIGO = '${numEmp}'`,
 						"Error retrieving employee information",
 						dbs.colabora
 					);
+
+
+
+					console.log("Employee data: ", employeeData[0]);
 
 					const companyData = await executeQuery(
 						`SELECT
@@ -2012,6 +2058,39 @@ const resolvers = {
 						"Error retrieving employee information",
 						dbs.colabora
 					);
+					employeeData[0].id_proyecto = employeeData[0].id_proyecto.trim();
+					if (employeeData[0].id_proyecto === "H09") {
+						switch (employeeData[0].nombre_planta) {
+							case "PLANTA 18-1":
+								companyData[0].calle = "Boulevard Independencia";
+								companyData[0].num_ext = "1568";
+								companyData[0].colonia = "Col. Zaragoza";
+								companyData[0].codigo_postal = "32590";
+								companyData[0].ciudad = "Ciudad Juárez";
+								companyData[0].entidad = "Chihuahua";
+								break;
+
+							case "PLANTA 18-2":
+								companyData[0].calle = "Blvd. Manuel Talamás Camandari";
+								companyData[0].num_ext = "8610";
+								companyData[0].colonia = "Col. Lote Bravo";
+								companyData[0].codigo_postal = "32695";
+								companyData[0].ciudad = "Ciudad Juárez";
+								companyData[0].entidad = "Chihuahua";
+								break;
+
+							case "PLANTA 18-3":
+								companyData[0].calle = "Blvd. Manuel Talamás Camandari";
+								companyData[0].num_ext = "9020 Int. A";
+								companyData[0].colonia = "Col. Los Arcos";
+								companyData[0].codigo_postal = "32695";
+								companyData[0].ciudad = "Ciudad Juárez";
+								companyData[0].entidad = "Chihuahua";
+								break;
+
+
+						}
+					}
 					// console.log("Employee data: ", employeeData);
 					// console.log("Company data: ", companyData);
 					// console.log("Directory data: ", directory);
@@ -2035,9 +2114,11 @@ const resolvers = {
 					pdfData.tipo = letter;
 
 					let logoName;
-					console.log("Project is: ", data.project.trim());
+					// console.log("Project is: ", data.project.trim());
 					if (data.project.trim() === "H09") {
 						logoName = "FLEXSTEEL.png";
+					} else if (data.project.trim() === "H75") {
+						logoName = "CLEAR.png";
 					} else {
 						logoName = "LOGOTECMA.png";
 					}
@@ -2624,23 +2705,23 @@ const resolvers = {
 				default:
 					break;
 			}
-			console.log(`numEmp: ${numEmp}, name: ${name},
-				formattedDateTime: ${formattedDateTime},
-				letter: ${letter},
-				hr_id: ${hr_id},
-				mail: ${mail},
-				newFileName: ${newFileName},
-				plant_id: ${letterType === "NIP" ? "" : plant_id},
-				shift: ${letterType === "NIP" ? "" : shift},
-				project: ${letterType === "NIP" ? "" : project},
-				position: ${letterType === "NIP" ? "" : position},
-				clasification: ${clasification},
-				motive: ${motive},
-				coment: ${coment},
-				period: ${period},
-				start_date: ${start_date},
-				end_date: ${end_date},
-				days: ${days}`);
+			// console.log(`numEmp: ${numEmp}, name: ${name},
+			// 	formattedDateTime: ${formattedDateTime},
+			// 	letter: ${letter},
+			// 	hr_id: ${hr_id},
+			// 	mail: ${mail},
+			// 	newFileName: ${newFileName},
+			// 	plant_id: ${letterType === "NIP" ? "" : plant_id},
+			// 	shift: ${letterType === "NIP" ? "" : shift},
+			// 	project: ${letterType === "NIP" ? "" : project},
+			// 	position: ${letterType === "NIP" ? "" : position},
+			// 	clasification: ${clasification},
+			// 	motive: ${motive},
+			// 	coment: ${coment},
+			// 	period: ${period},
+			// 	start_date: ${start_date},
+			// 	end_date: ${end_date},
+			// 	days: ${days}`);
 
 			await executeParameterizedQuery(
 				`Insert Into
