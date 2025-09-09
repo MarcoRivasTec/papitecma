@@ -27,13 +27,17 @@ const {
 	generateAdjustmentPDF,
 	generateVacationsPDF,
 	generatePermitPDF,
+	generateVacationCertificatePDF,
 } = require("../../utils/generatePDF");
 const oldKey = process.env.OLD_KEY;
 const newKey = process.env.NEW_KEY;
+const notifKey = process.env.NOTIF_KEY;
 const path = require("path");
 const fs = require("fs");
 const Numalet = require("numalet");
 const { DateTime } = require("luxon");
+const { enc } = require("crypto-js");
+const { requireAuth } = require("../../utils/auth");
 // const secretKey = process.env.NEW_KEY;
 
 const selectRegion = async (region) => {
@@ -1402,7 +1406,223 @@ const resolvers = {
 				return { success: false, message: "Done" }
 			}
 
-		}
+		},
+		ComplaintInfo: async (_, { region }) => {
+			// const dbs = await selectRegion(region);
+
+
+			const email = 't.escuchamos@tecma.com';
+			const phone = region === "TIJ"
+				? "8116010519"
+				: region === "MTY" || region === "SAL"
+					? "6647983328"
+					: "6563755037"; // Telefono central
+
+
+
+			return { success: true, message: "Done", data: { email, phone } };
+		},
+		Notifications: requireAuth(async (_, __, { user }) => {
+			try {
+
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				console.log("User is: ", user);
+				// return { id: true };
+				// 1. Select correct DB
+				const dbs = await selectRegion(user.region);
+
+				let code = {};
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX": {
+						code.supervisor = "3";
+						code.area = "5";
+						code.planta = "7";
+						break;
+					}
+					case "SAL":
+					case "TIJ": {
+						code.supervisor = "8";
+						code.area = "6";
+						code.planta = "1";
+						break;
+					}
+				}
+
+				const userDetails = await executeQuery(
+					`SELECT CB_CODIGO as employee_id,
+						CB_NIVEL${code.area} AS area,
+						CB_NIVEL${code.supervisor} AS project,
+						CB_NIVEL${code.planta} AS plant
+					FROM COLABORA
+					WHERE CB_CODIGO = '${user.empId}'`,
+					"Error fetching user details",
+					dbs.colabora
+				);
+
+				// console.log("User details are: ", userDetails[0])
+				// console.log("User area is: ", userDetails[0].area.trim())
+
+				const notificationsQuery = `SELECT DISTINCT n.id, n.title, n.message, n.created_at
+						FROM notifications n
+						JOIN notificationTargets t ON n.id = t.notification_id
+						WHERE n.is_active = 1 AND t.is_active = 1
+							AND (t.region_id IS NULL OR t.region_id = (
+								SELECT region_id FROM Regions WHERE region_code = '${region}'
+							))
+							AND (t.area_id IS NULL OR t.area_id = '${userDetails[0].area.trim()}')
+							AND (t.project_id IS NULL OR t.project_id = '${userDetails[0].project.trim()}')
+							AND (t.plant_id IS NULL OR t.plant_id = '${userDetails[0].plant.trim()}')
+							AND (t.employee_id IS NULL OR t.employee_id = '${empId}')
+							AND NOT EXISTS (
+								SELECT 1 FROM notificationsRead r
+								WHERE r.notification_id = n.id AND r.employee_id = '${empId}'
+							)
+						ORDER BY n.created_at DESC`
+
+				// console.log("Notifications query is: ", notificationsQuery)
+				const notifications = await executeQuery(
+					notificationsQuery,
+					"Error fetching notifications",
+					"tecmamovilcentral",
+				);
+
+				// For each notification, fetch file names (NOT URLs)
+				const enriched = await Promise.all(
+					notifications.map(async (n) => {
+						const files = await executeQuery(
+							`SELECT id, file_name
+								FROM notificationFiles
+								WHERE notification_id = ${n.id}
+							`,
+							"Error fetching file names",
+							"tecmamovilcentral",
+						);
+
+						return {
+							...n,
+							files,
+						};
+					})
+				);
+
+				console.log("Returning: ", enriched)
+
+				return enriched;
+			} catch (error) {
+				console.error("Error in notifications resolver:", error);
+				throw new Error("Failed to load notifications");
+			}
+
+		},
+		),
+		NotificationFileUrl: requireAuth(async (_, { notificationId, fileId }, { user }) => {
+			if (!user) throw new Error("Unauthorized");
+
+			const { empId, region } = user;
+
+			// 1) Select correct DBs for this region
+			const dbs = await selectRegion(region);
+
+			// 2) Map NIVEL indices based on region (same logic you use in Notifications)
+			let code = {};
+			switch (region) {
+				case "JRZ":
+				case "MTY":
+				case "AMX":
+					code.supervisor = "3";
+					code.area = "5";
+					code.planta = "7";
+					break;
+				case "SAL":
+				case "TIJ":
+					code.supervisor = "8";
+					code.area = "6";
+					code.planta = "1";
+					break;
+				default:
+					throw new Error(`Unsupported region: ${region}`);
+			}
+
+			// 3) Get user details (area/project/plant)
+			const userDetails = await executeQuery(
+				`SELECT CB_CODIGO as employee_id,
+						CB_NIVEL${code.area}       AS area,
+						CB_NIVEL${code.supervisor} AS project,
+						CB_NIVEL${code.planta}     AS plant
+				FROM COLABORA
+				WHERE CB_CODIGO = '${empId}'`,
+				"Error fetching user details",
+				dbs.colabora
+			);
+
+			if (!userDetails?.length) throw new Error("Employee not found for region");
+
+			const area = String(userDetails[0].area || "").trim();
+			const project = String(userDetails[0].project || "").trim();
+			const plant = String(userDetails[0].plant || "").trim();
+
+			// 4) Verify the notification is visible to this user (same targeting logic)
+			const visibilityQuery = `
+				SELECT TOP 1 n.id
+				FROM notifications n
+				JOIN notificationTargets t ON n.id = t.notification_id
+				WHERE n.is_active = 1 AND t.is_active = 1
+				AND n.id = ${Number(notificationId)}
+				AND (t.region_id   IS NULL OR t.region_id   = (SELECT region_id FROM Regions WHERE region_code = '${region}'))
+				AND (t.area_id     IS NULL OR t.area_id     = '${area}')
+				AND (t.project_id  IS NULL OR t.project_id  = '${project}')
+				AND (t.plant_id    IS NULL OR t.plant_id    = '${plant}')
+				AND (t.employee_id IS NULL OR t.employee_id = '${empId}')
+			`;
+
+			const visibility = await executeQuery(
+				visibilityQuery,
+				"Error verifying notification visibility",
+				"tecmamovilcentral"
+			);
+
+			if (!visibility?.length) throw new Error("Notification not found or not authorized");
+
+			// 5) Ensure the file belongs to this notification
+			const fileRow = await executeQuery(
+				`SELECT TOP 1 id, file_name
+				FROM notificationFiles
+				WHERE id = ${Number(fileId)}
+				AND notification_id = ${Number(notificationId)}`,
+				"Error verifying notification file",
+				"tecmamovilcentral"
+			);
+
+			if (!fileRow?.length) throw new Error("File not found for this notification");
+
+			const fileName = fileRow[0].file_name;
+			// basic allowlist to avoid traversal
+			if (!/^[a-zA-Z0-9._-]+$/.test(fileName)) throw new Error("Invalid filename");
+
+			// 6) Sign a short-lived (2 min) download token
+			const token = jwt.sign(
+				{ typ: "download", file: fileName, empId, region },
+				notifKey,
+				{ expiresIn: "2m" }
+			);
+
+			// 7) Build absolute URL to your download route
+			const base =
+				process.env.HOST === "PRODUCTION"
+					? "https://api.tecmamovilconnect.com"
+					: "http://10.3.1.180:8083";
+
+			return {
+				success: true,
+				message: 'File URL generated',
+				url: `${base}/download/notification?token=${encodeURIComponent(token)}`
+			};
+		}),
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
@@ -1432,6 +1652,13 @@ const resolvers = {
 					code.area = "6";
 					code.planta = "1";
 					break;
+				}
+			}
+
+			if (numEmp === "14884" || numEmp === "35620" || numEmp === "40361" || numEmp === "4 0394" || numEmp === "23815" && (region === "TIJ" || region === "SAL")) {
+				return {
+					success: false,
+					message: "Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos.",
 				}
 			}
 
@@ -1501,9 +1728,9 @@ const resolvers = {
 					await executeQuery(
 						`Update Empleados
 						Set NIP = '${encryptedPasswordOld}',
-						ENCRIPTADA = 1
-						Where
-						CB_CODIGO = '${numEmp}'`,
+					ENCRIPTADA = 1
+				Where
+				CB_CODIGO = '${numEmp}'`,
 						"Error updating NIP",
 						dbs.kioskotek
 					);
@@ -1526,15 +1753,27 @@ const resolvers = {
 			);
 
 			await executeQuery(
-				`INSERT INTO K_log (No, Fecha, Planta, Proyecto, Tipo)
-				Values ('${numEmp}', GETDATE(), '${queryName[0].plant}', '${queryName[0].project}', 'Login')
+				`INSERT INTO K_log(No, Fecha, Planta, Proyecto, Tipo)
+				Values('${numEmp}', GETDATE(), '${queryName[0].plant}', '${queryName[0].project}', 'Login')
 				`,
 				"Error logging user access",
 				dbs.kioskotek
 			)
 
+			await executeQuery(
+				`UPDATE Empleados
+				SET FEC_LOGIN = GETDATE()
+				WHERE CB_CODIGO = '${numEmp}'
+					`,
+				"Error logging user access",
+				dbs.kioskotek
+			)
+
 			const token = jwt.sign(
-				{ id: userData.CB_CODIGO, name: queryName[0].CB_NOMBRES },
+				{
+					empId: (userData.CB_CODIGO).toString(),
+					region: region,
+				},
 				process.env.JWT_KEY,
 				{
 					expiresIn: "1h",
@@ -1547,6 +1786,144 @@ const resolvers = {
 				data: { token, name: queryName[0].CB_NOMBRES },
 			};
 		},
+		mockLogin: async (_, { numEmpList, region }) => {
+			const dbs = await selectRegion(region);
+
+			const code = {};
+			switch (region) {
+				case "JRZ":
+				case "MTY":
+				case "AMX":
+					code.supervisor = "3";
+					code.area = "5";
+					code.proyecto = "0";
+					code.planta = "7";
+					break;
+				case "SAL":
+				case "TIJ":
+					code.supervisor = "8";
+					code.proyecto = "5";
+					code.area = "6";
+					code.planta = "1";
+					break;
+			}
+
+			const results = [];
+
+			for (const rawId of numEmpList) {
+				const id = rawId.toString().trim();
+
+				// Case: invalid number
+				if (+id > 2147483647 || +id < 0 || isNaN(+id)) {
+					results.push({
+						id,
+						status: "Número de empleado inválido.",
+						nip: null,
+						encrypted: false
+					});
+					continue;
+				}
+
+				// Case: hardcoded inactive users for TIJ/SAL
+				const hardcodedInactive = ["14884", "35620", "40361", "40394", "23815"];
+				if (hardcodedInactive.includes(id) && ["TIJ", "SAL"].includes(region)) {
+					results.push({
+						id,
+						status: "Usuario inactivo. Contacte a Recursos Humanos.",
+						nip: null,
+						encrypted: false
+					});
+					continue;
+				}
+
+				// Case: inactivo en tabla COLABORA
+				const activeQuery = `SELECT CB_ACTIVO AS active FROM COLABORA WHERE CB_CODIGO = '${id}'`;
+				const activeResult = await executeQuery(
+					activeQuery,
+					"Error checking user status",
+					dbs.colabora
+				);
+
+				if (!activeResult.length) {
+					results.push({
+						id,
+						status: "Usuario no encontrado en COLABORA.",
+						nip: null,
+						encrypted: false
+					});
+					continue;
+				}
+
+				if (activeResult[0].active === "N") {
+					results.push({
+						id,
+						status: "Usuario inactivo en COLABORA. Contacte a Recursos Humanos.",
+						nip: null,
+						encrypted: false
+					});
+					continue;
+				}
+
+				// Case: try to get NIP from Empleados
+				const queryNip = await executeQuery(
+					`SELECT NIP, ENCRIPTADA FROM Empleados WHERE CB_CODIGO = '${id}'`,
+					"Error fetching NIP",
+					dbs.kioskotek
+				);
+
+				const userData = queryNip[0];
+
+				if (!userData) {
+					results.push({
+						id,
+						status: "Usuario no encontrado en Empleados (Kioskotek).",
+						nip: null,
+						encrypted: false
+					});
+					continue;
+				}
+
+				if (!userData.NIP || userData.NIP === "") {
+					results.push({
+						id,
+						status: "Usuario sin NIP asignado.",
+						nip: null,
+						encrypted: false
+					});
+					continue;
+				}
+
+				let nip = null;
+				let encrypted = false;
+
+				if (userData.ENCRIPTADA) {
+					try {
+						nip = decryptOld(userData.NIP, oldKey);
+						encrypted = true;
+					} catch {
+						results.push({
+							id,
+							status: `Error al desencriptar el NIP.Encriptada: ${userData.ENCRIPTADA} `,
+							nip: userData.NIP,
+							encrypted: true
+						});
+						continue;
+					}
+				} else {
+					nip = userData.NIP;
+				}
+
+				// Success
+				results.push({
+					id,
+					status: "Logged in correctly",
+					nip,
+					encrypted
+				});
+			}
+
+			return results;
+		},
 		resetNIP: async (_, { numEmp, rfc, newNIP, region }) => {
 			if (+numEmp > 2147483647 || +numEmp < 0) {
 				return "Not found";
@@ -1557,9 +1934,9 @@ const resolvers = {
 				`Select
 					FEC_LOGIN As login_date
 				From
-					Empleados
+				Empleados
 				Where
-					CB_CODIGO = ${numEmp}`,
+				CB_CODIGO = ${numEmp} `,
 				"Error retrieving employee login date",
 				dbs.kioskotek
 			);
@@ -1568,9 +1945,9 @@ const resolvers = {
 				`Select
 					CB_RFC As rfc
 				From
-					COLABORA
+				COLABORA
 				Where
-					CB_CODIGO = ${numEmp}`,
+				CB_CODIGO = ${numEmp} `,
 				"Error retrieving employee login date",
 				dbs.colabora
 			);
@@ -1583,7 +1960,7 @@ const resolvers = {
 			const launchDate = new Date(2025, 4, 24);
 			const lastLoginDate = new Date(employeeData[0].login_date);
 			console.log(
-				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate}`
+				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate} `
 			);
 
 			if (lastLoginDate > launchDate) {
@@ -1603,8 +1980,8 @@ const resolvers = {
 					await executeQuery(
 						`Update Empleados
 						Set NIP = '${encryptedPasswordNew}'
-						Where
-						CB_CODIGO = ${numEmp}
+				Where
+				CB_CODIGO = ${numEmp}
 						And RFC = '${rfc}'`,
 						"Error updating measurement",
 						dbs.kioskotek
@@ -1629,7 +2006,7 @@ const resolvers = {
 					const employeeNIPReset = await executeQuery(
 						`UPDATE Empleados
 						SET NIP = '${encryptedPasswordOld}',
-						ENCRIPTADA = 1
+					ENCRIPTADA = 1
 						WHERE CB_CODIGO = '${numEmp}'`,
 						"Error resetting employee nip",
 						dbs.kioskotek
@@ -2181,6 +2558,8 @@ const resolvers = {
 
 					if (data.project.trim() === "H09") {
 						logoName = "FLEXSTEEL.png";
+					} else if (data.project.trim() === "H75") {
+						logoName = "CLEAR.png";
 					} else {
 						logoName = "LOGOTECMA.png";
 					}
@@ -2532,6 +2911,8 @@ const resolvers = {
 
 					if (data.project.trim() === "H09") {
 						logoName = "FLEXSTEEL.png";
+					} else if (data.project.trim() === "H75") {
+						logoName = "CLEAR.png";
 					} else {
 						logoName = "LOGOTECMA.png";
 					}
@@ -2641,6 +3022,8 @@ const resolvers = {
 
 					if (data.project.trim() === "H09") {
 						logoName = "FLEXSTEEL.png";
+					} else if (data.project.trim() === "H75") {
+						logoName = "CLEAR.png";
 					} else {
 						logoName = "LOGOTECMA.png";
 					}
@@ -3424,6 +3807,360 @@ const resolvers = {
 				return {
 					success: false,
 					message: "Ocurrió un error al registrar la solicitud.",
+				};
+			}
+		},
+		generateVacationCertificate: async (_, { input }) => {
+			const { numEmp, region, signature } = input;
+			// console.log("Input is: ", JSON.stringify(input, null, 1));
+
+			if (!numEmp || !region || !signature) {
+				return {
+					success: false,
+					message: "Missing required input fields.",
+				};
+			}
+
+			try {
+				const dbs = await selectRegion(region);
+
+				let code = {};
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX": {
+						code.supervisor = "3";
+						code.area = "5";
+						code.proyecto = "0";
+						code.planta = "7";
+						break;
+					}
+					case "SAL":
+					case "TIJ": {
+						code.supervisor = "8";
+						code.proyecto = "5";
+						code.area = "6";
+						code.planta = "1";
+						break;
+					}
+				}
+
+				const employeeData = await executeQuery(
+					`SELECT
+						CB_FEC_ANT AS start_date,
+						CONCAT(CB_NOMBRES, ' ', CB_APE_PAT, ' ', CB_APE_MAT) AS full_name,
+						PU_DESCRIP AS position,
+						AREA.TB_ELEMENT As department,
+						CB_NIVEL${code.proyecto} As project_id,
+						CB_FEC_ANT as fecha_ingreso,
+						CB_DER_PAG as days_granted
+					FROM
+						COLABORA
+						INNER JOIN PUESTO ON PUESTO.PU_CODIGO = COLABORA.CB_PUESTO
+						LEFT JOIN NIVEL${code.area} as AREA on CB_NIVEL${code.area} = AREA.TB_CODIGO
+					WHERE
+						CB_CODIGO = '${numEmp}'`,
+					"Error retrieving employee information",
+					dbs.colabora
+				);
+
+				if (!employeeData || employeeData.length === 0) {
+					return {
+						success: false,
+						message: "Empleado no encontrado",
+					};
+				}
+
+				console.log("Employee exists");
+
+				const now = new Date();
+				const ingreso = new Date(employeeData[0].fecha_ingreso);
+
+				// 2. Block if user hasn't passed first anniversary
+				const firstAnniversary = new Date(ingreso);
+				firstAnniversary.setFullYear(ingreso.getFullYear() + 1);
+
+				if (now < firstAnniversary) {
+					console.log("User is not eligible for vacation certificate yet");
+					return {
+						success: false,
+						message: "Aún no eres elegible para generar una constancia de vacaciones, debe pasar un año desde tu fecha de ingreso.",
+					};
+				}
+
+				// 3. Determine current work-cycle window
+				let anniversary = new Date(now.getFullYear(), ingreso.getMonth(), ingreso.getDate());
+				if (now < anniversary) anniversary.setFullYear(anniversary.getFullYear() - 1);
+
+				const nextAnniversary = new Date(anniversary);
+				nextAnniversary.setFullYear(anniversary.getFullYear() + 1);
+
+				const windowStart = anniversary.toISOString();
+				const windowEnd = nextAnniversary.toISOString();
+
+				// 4. Check if certificate already exists for this cycle
+				console.log("Checking for existing vacation certificate...");
+				const [existing] = await executeQuery(
+					`SELECT TOP 1 file_name 
+					FROM VacationCertificates
+					WHERE employee_id = '${numEmp}'
+					AND generated_at >= '${windowStart}' AND generated_at < '${windowEnd}'`,
+					"Error checking existing vacation certificate",
+					dbs.tecmamovil
+				);
+
+				if (existing) {
+					console.log("Existing vacation certificate found: ", existing.file_name);
+					// const publicUrl = `https://api.tecmamovilconnect.com/vacation-certificates/${existing.file_name}`;
+					const publicUrl = `http://10.3.1.180:8083/vacation-certificates/${existing.file_name}`;
+					return {
+						success: false,
+						message: "El certificado de vacaciones ya existe para este año laboral.",
+						pdfUrl: publicUrl,
+					};
+				}
+
+
+				// console.log("Employee data: ", employeeData[0]);
+
+				const companyData = await executeQuery(
+					`SELECT
+							RS_NOMBRE As company_name,
+							RS_CIUDAD As city,
+							EN.TB_ELEMENT As state
+						FROM
+							COLABORA As C
+							Inner Join RPATRON As RP On RP.TB_CODIGO = C.CB_PATRON
+							Inner Join RSOCIAL As RS On RS.RS_CODIGO = RP.RS_CODIGO
+							Inner Join ENTIDAD As EN On EN.TB_CODIGO = RS.RS_ENTIDAD
+						WHERE
+							C.CB_CODIGO = '${numEmp}'`,
+					"Error retrieving employee information",
+					dbs.colabora
+				);
+
+				function formatDateToSpanish(dateString) {
+					const localDate = new Date(dateString);
+
+					const options = {
+						year: "numeric",
+						month: "long",
+						day: "numeric",
+						timeZone: "UTC",
+					};
+
+					let formatted = localDate.toLocaleDateString("es-ES", options);
+					formatted = formatted.replace(/ de (\d{4})$/, " del $1");
+
+					// Capitalize the first letter of the month
+					return formatted.replace(/\b(de )([a-z])/, (_, prefix, char) => prefix + char.toUpperCase());
+				}
+
+				const today = formatDateToSpanish(now);
+
+				const pdfData = {
+					...employeeData[0],
+					...companyData[0],
+					today,
+				};
+
+				const fechaIngreso = new Date(employeeData[0].fecha_ingreso);
+
+				const currentYear = now.getFullYear();
+				const nextYear = currentYear + 1;
+
+				const day = fechaIngreso.getDate();
+				const month = fechaIngreso.getMonth();
+
+				const startVacationDate = new Date(Date.UTC(currentYear, month, day + 1));
+				const endVacationDate = new Date(Date.UTC(nextYear, month, day + 1));
+
+				pdfData.start_vacation = formatDateToSpanish(startVacationDate.toISOString());
+				pdfData.end_vacation = formatDateToSpanish(endVacationDate.toISOString());
+
+				let seniority = now.getFullYear() - fechaIngreso.getFullYear();
+
+				// Adjust if the current date is before the anniversary in the current year
+				const monthDiff = now.getMonth() - fechaIngreso.getMonth();
+				const dayDiff = now.getDate() - fechaIngreso.getDate();
+
+				if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+					seniority--;
+				}
+
+				pdfData.seniority_date = formatDateToSpanish(employeeData[0].fecha_ingreso);
+				pdfData.seniority_years = seniority;
+
+				let logoName;
+				// console.log("Project is: ", data.project.trim());
+				if (employeeData[0].project_id.trim() === "H09") {
+					logoName = "FLEXSTEEL.png";
+				} else if (employeeData[0].project_id.trim() === "H75") {
+					logoName = "CLEAR.png";
+				} else {
+					logoName = "LOGOTECMA.png";
+				}
+
+				const imageBase64 = fs
+					.readFileSync(
+						path.join(__dirname, `../../public/assets/images/${logoName}`)
+					)
+					.toString("base64");
+
+				pdfData.company_logo = imageBase64;
+
+				pdfData.signature = signature;
+				// console.log("pdfData: ", pdfData);
+				// return;
+
+				console.log("Generating vacation cert pdf...");
+
+				function getFileSuffixUTCMinus7() {
+					const now = new Date();
+
+					// Offset in minutes for UTC-6
+					const offsetMinutes = -6 * 60;
+					const local = new Date(now.getTime() + offsetMinutes * 60 * 1000);
+
+					const pad = (n) => String(n).padStart(2, "0");
+
+					const year = local.getUTCFullYear();
+					const month = pad(local.getUTCMonth() + 1);
+					const day = pad(local.getUTCDate());
+					const hour = pad(local.getUTCHours());
+					const min = pad(local.getUTCMinutes());
+
+					return `${year}${month}${day}${hour}${min}`;
+				}
+
+				const fileSuffix = getFileSuffixUTCMinus7();
+				const file_name = `Constancia_de_Vacaciones_${numEmp}_${fileSuffix}.pdf`;
+				pdfData.file_name = file_name;
+				await generateVacationCertificatePDF({ data: pdfData });
+				// console.log(Buffer.isBuffer(fileBuffer));
+				// console.log("After checking buffer again");
+				// fileBuffer = Buffer.from(file, "base64");
+				// return { pdfFile: fileBuffer };
+
+				console.log("File name is: ", file_name);
+				// 6. Store metadata
+				// await executeQuery(
+				// 	`INSERT INTO VacationCertificates (employee_id, file_name) VALUES (${numEmp}, ${fileName})`,
+				// 	"Error storing vacation certificate metadata",
+				// 	dbs.tecmamovil
+				// );
+				console.log("After storing metadata");
+
+				// const publicUrl = `https://api.tecmamovilconnect.com/vacation-certificates/${file_name}`;
+				const publicUrl = `http://10.3.1.180:8083/vacation-certificates/${file_name}`;
+				console.log("Public URL is: ", publicUrl);
+
+				await executeQuery(
+					`INSERT INTO VacationCertificates(employee_id, file_name, generated_at)
+				Values('${numEmp}', '${file_name}', GETDATE())
+				`,
+					"Error storing vacation certificate metadata",
+					dbs.tecmamovil
+				)
+
+				return {
+					success: true,
+					message: "Constancia de Vacaciones generada exitosamente.",
+					pdfUrl: publicUrl,
+				};
+			} catch (error) {
+				console.error("Error generating vacation cert:", error);
+				return {
+					success: false,
+					message: "Failed to generate vacation cert.",
+				};
+			}
+		},
+		handleCheckIn: async (_, { input }) => {
+			console.log("Received request");
+			const { numEmp, region } = input;
+			const dbs = await selectRegion(region);
+
+			// Validate the input
+			if (!numEmp || !region) {
+				return {
+					success: false,
+					message: "Input is invalid. Please provide all required fields.",
+				};
+			}
+
+			try {
+				// Construct the SQL query
+				const query = `FROM COLABORA
+								WHERE CB_CODIGO = '${numEmp}'`;
+
+				// console.log("Query is: ", JSON.stringify(query, null, 1));
+
+				// Execute the query
+				const data = await executeQuery(
+					query,
+					"Error updating info for check in",
+					dbs.colabora
+				);
+
+				// console.log("Obtained data is: ", data);
+				return {
+					success: true,
+					message: "Employee check-in successful",
+				};
+			} catch (error) {
+				console.error("Error while querying employee info:", error);
+				return {
+					success: false,
+					message: "An error occurred while checking in.",
+				};
+			}
+		},
+		assignSurveys: async (_, { input }) => {
+
+			const { employeeId, surveyId, region } = input;
+
+			if (!employeeId || !surveyId || !region) {
+				return {
+					success: false,
+					message: "Invalid input. Please provide employeeId, surveyId, and region.",
+				};
+			}
+
+			const dbs = await selectRegion(region);
+
+			const code = {};
+			switch (region) {
+				case "JRZ":
+				case "MTY":
+				case "AMX":
+					code.supervisor = "3";
+					code.area = "5";
+					code.proyecto = "0";
+					code.planta = "7";
+					break;
+				case "SAL":
+				case "TIJ":
+					code.supervisor = "8";
+					code.proyecto = "5";
+					code.area = "6";
+					code.planta = "1";
+					break;
+			}
+
+			try {
+				// Logic to assign the survey to the employee
+				// This could involve updating a database record, etc.
+
+				return {
+					success: true,
+					message: "Survey assigned successfully.",
+				};
+			} catch (error) {
+				console.error("Error assigning survey:", error);
+				return {
+					success: false,
+					message: "Failed to assign survey.",
 				};
 			}
 		},

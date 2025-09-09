@@ -6,7 +6,7 @@ const configs = {
 		user: process.env.DB_USER_TECMAMOVILCENTRAL,
 		password: process.env.DB_PASS_TECMAMOVILCENTRAL,
 		server: process.env.DB_HOST_TECMAMOVILCENTRAL,
-		port: process.env.DB_PORT_TECMAMOVILCENTRAL,
+		port: parseInt(process.env.DB_PORT_TECMAMOVILCENTRAL, 10),
 		database: process.env.DB_NAME_TECMAMOVILCENTRAL,
 		options: {
 			encrypt: false,
@@ -17,7 +17,7 @@ const configs = {
 		user: process.env.DB_USER_TECMAMOVILWEST,
 		password: process.env.DB_PASS_TECMAMOVILWEST,
 		server: process.env.DB_HOST_TECMAMOVILWEST,
-		port: process.env.DB_PORT_TECMAMOVILWEST,
+		port: parseInt(process.env.DB_PORT_TECMAMOVILWEST, 10),
 		database: process.env.DB_NAME_TECMAMOVILWEST,
 		options: {
 			encrypt: false,
@@ -28,7 +28,7 @@ const configs = {
 		user: process.env.DB_USER_TECMACENTRAL,
 		password: process.env.DB_PASS_TECMACENTRAL,
 		server: process.env.DB_HOST_TECMACENTRAL,
-		port: process.env.DB_PORT_TECMACENTRAL,
+		port: parseInt(process.env.DB_PORT_TECMACENTRAL, 10),
 		database: process.env.DB_NAME_TECMACENTRAL,
 		options: {
 			encrypt: false,
@@ -39,7 +39,7 @@ const configs = {
 		user: process.env.DB_USER_KIOSKOCENTRAL,
 		password: process.env.DB_PASS_KIOSKOCENTRAL,
 		server: process.env.DB_HOST_KIOSKOCENTRAL,
-		port: process.env.DB_PORT_KIOSKOCENTRAL,
+		port: parseInt(process.env.DB_PORT_KIOSKOCENTRAL, 10),
 		database: process.env.DB_NAME_KIOSKOCENTRAL,
 		options: {
 			encrypt: false,
@@ -50,7 +50,7 @@ const configs = {
 		user: process.env.DB_USER_AMX,
 		password: process.env.DB_PASS_AMX,
 		server: process.env.DB_HOST_AMX,
-		port: process.env.DB_PORT_AMX,
+		port: parseInt(process.env.DB_PORT_AMX, 10),
 		database: process.env.DB_NAME_AMX,
 		options: {
 			encrypt: false,
@@ -61,7 +61,7 @@ const configs = {
 		user: process.env.DB_USER_KIOSKOAMX,
 		password: process.env.DB_PASS_KIOSKOAMX,
 		server: process.env.DB_HOST_KIOSKOAMX,
-		port: process.env.DB_PORT_KIOSKOAMX,
+		port: parseInt(process.env.DB_PORT_KIOSKOAMX, 10),
 		database: process.env.DB_NAME_KIOSKOAMX,
 		options: {
 			encrypt: false,
@@ -72,7 +72,7 @@ const configs = {
 		user: process.env.DB_USER_TECMAWEST,
 		password: process.env.DB_PASS_TECMAWEST,
 		server: process.env.DB_HOST_TECMAWEST,
-		port: process.env.DB_PORT_TECMAWEST,
+		port: parseInt(process.env.DB_PORT_TECMAWEST, 10),
 		database: process.env.DB_NAME_TECMAWEST,
 		options: {
 			encrypt: false,
@@ -83,7 +83,7 @@ const configs = {
 		user: process.env.DB_USER_KIOSKOWEST,
 		password: process.env.DB_PASS_KIOSKOWEST,
 		server: process.env.DB_HOST_KIOSKOWEST,
-		port: process.env.DB_PORT_KIOSKOWEST,
+		port: parseInt(process.env.DB_PORT_KIOSKOWEST, 10),
 		database: process.env.DB_NAME_KIOSKOWEST,
 		options: {
 			encrypt: false,
@@ -105,6 +105,7 @@ const configs = {
 const poolPromises = {};
 
 for (const [key, config] of Object.entries(configs)) {
+	// console.log(`Connecting to ${key} with config: `, JSON.stringify(config, null, 1));
 	poolPromises[key] = new sql.ConnectionPool(config)
 		.connect()
 		.then((pool) => {
