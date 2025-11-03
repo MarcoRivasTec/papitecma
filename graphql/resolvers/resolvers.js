@@ -1724,6 +1724,7 @@ const resolvers = {
 					console.log("Unencrypted nip matches")
 					isAuthorized = true
 					const encryptedPasswordOld = encryptOld(nip, oldKey);
+					console.log(`Updating password for ${numEmp} to: ${encryptedPasswordOld}`)
 
 					await executeQuery(
 						`Update Empleados
@@ -1957,7 +1958,7 @@ const resolvers = {
 				return "Not found";
 			}
 
-			const launchDate = new Date(2025, 4, 24);
+			const launchDate = new Date(2026, 4, 24);
 			const lastLoginDate = new Date(employeeData[0].login_date);
 			console.log(
 				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate} `
@@ -2158,153 +2159,156 @@ const resolvers = {
 		) => {
 			// console.log(`Day to adjust: ${day_to_adjust}, period: ${period}`);
 			// return
-			if (letter === "PtmoFA") {
-				if (loan_weeks < 2) return "LessThan2Weeks";
-			}
-			const data = {
-				numEmp,
-				name,
-				letter,
-				plant_id,
-				shift,
-				project,
-				position,
-				clasification,
-				motive,
-				coment,
-				day_to_adjust,
-				period,
-				start_date,
-				end_date,
-				days,
-				requested_loan,
-				loan_weeks,
-			};
-			const dbs = await selectRegion(region);
-			console.log("Data values: ", JSON.stringify(data, null, 1));
-			// if (letter === "PtmoFA") {
-			// 	console.log("Letter is PtmoFA");
-			// 	return { pdfFile: "Wait" };
-			// }
+			try {
 
-			// if (letter !== "NIP" && letter !== "AltaIMSS") {
-			// 	let letterQuery;
-			// 	switch (letter) {
-			// 		case "CartaPrestamo":
-			// 			console.log("Caso prestamo");
-			// 			letterQuery = "Prestamo";
-			// 			break;
-			// 		case "CartaGuarderia":
-			// 		case "CartaTrabajo":
-			// 		case "CartaVisa":
-			// 		case "CartaPermiso":
-			// 			letterQuery = letter.substring(5);
-			// 			break;
-			// 		case "PermisoDias":
-			// 			letterQuery = "Permiso";
-			// 			break;
-			// 		case "AjustePrenom":
-			// 			letterQuery = "Ajuste";
-			// 			break;
-			// 		default:
-			// 			letterQuery = letter;
-			// 			break;
-			// 	}
-			// 	const existing = await executeQuery(
-			// 		`SELECT 
-			// 			CASE 
-			// 				WHEN EXISTS (
-			// 					SELECT 1 
-			// 					FROM K_Solicitudes 
-			// 					WHERE No = '${numEmp}'
-			// 					And Carta = '${letterQuery}'
-			// 					And Pendiente = 1
-			// 				) 
-			// 				THEN CAST(1 AS BIT)
-			// 				ELSE CAST(0 AS BIT)
-			// 			END AS existing_requisition;`,
-			// 		"Error retrieving employee information",
-			// 		dbs.kioskotek
-			// 	);
-			// 	// console.log("Existing: ", existing);
-			// 	if (existing[0].existing_requisition) {
-			// 		return { pdfFile: "Existing requisition" };
-			// 	}
-			// }
 
-			// console.log(data);
-			data.coment = coment;
-			const defaultHRID = "001";
-			const defaultCSCMail = "ruben.duron@tecma.com";
-			// const defaultHRMail = "ruben.duron@tecma.com";
-			const defaultHRMail = "gisela.barrios@tecma.com";
-			let pending = "1";
-			let fileBuffer = null;
-			// let fileBuffer = Buffer.alloc(0);
-			let letterType;
-			let newFileName;
-			let mail;
-			let hr_id;
+				if (letter === "PtmoFA") {
+					if (loan_weeks < 2) return "LessThan2Weeks";
+				}
+				const data = {
+					numEmp,
+					name,
+					letter,
+					plant_id,
+					shift,
+					project,
+					position,
+					clasification,
+					motive,
+					coment,
+					day_to_adjust,
+					period,
+					start_date,
+					end_date,
+					days,
+					requested_loan,
+					loan_weeks,
+				};
+				const dbs = await selectRegion(region);
+				console.log("Data values: ", JSON.stringify(data, null, 1));
+				// if (letter === "PtmoFA") {
+				// 	console.log("Letter is PtmoFA");
+				// 	return { pdfFile: "Wait" };
+				// }
 
-			// let response = "Done";
-			// if (fileName === null) {
-			// 	newFileName = "SinArchivo";
-			// }
+				// if (letter !== "NIP" && letter !== "AltaIMSS") {
+				// 	let letterQuery;
+				// 	switch (letter) {
+				// 		case "CartaPrestamo":
+				// 			console.log("Caso prestamo");
+				// 			letterQuery = "Prestamo";
+				// 			break;
+				// 		case "CartaGuarderia":
+				// 		case "CartaTrabajo":
+				// 		case "CartaVisa":
+				// 		case "CartaPermiso":
+				// 			letterQuery = letter.substring(5);
+				// 			break;
+				// 		case "PermisoDias":
+				// 			letterQuery = "Permiso";
+				// 			break;
+				// 		case "AjustePrenom":
+				// 			letterQuery = "Ajuste";
+				// 			break;
+				// 		default:
+				// 			letterQuery = letter;
+				// 			break;
+				// 	}
+				// 	const existing = await executeQuery(
+				// 		`SELECT 
+				// 			CASE 
+				// 				WHEN EXISTS (
+				// 					SELECT 1 
+				// 					FROM K_Solicitudes 
+				// 					WHERE No = '${numEmp}'
+				// 					And Carta = '${letterQuery}'
+				// 					And Pendiente = 1
+				// 				) 
+				// 				THEN CAST(1 AS BIT)
+				// 				ELSE CAST(0 AS BIT)
+				// 			END AS existing_requisition;`,
+				// 		"Error retrieving employee information",
+				// 		dbs.kioskotek
+				// 	);
+				// 	// console.log("Existing: ", existing);
+				// 	if (existing[0].existing_requisition) {
+				// 		return { pdfFile: "Existing requisition" };
+				// 	}
+				// }
 
-			const getFormattedDateTime = () => {
-				const currentDate = new Date();
+				// console.log(data);
+				data.coment = coment;
+				const defaultHRID = "001";
+				const defaultCSCMail = "ruben.duron@tecma.com";
+				// const defaultHRMail = "ruben.duron@tecma.com";
+				const defaultHRMail = "gisela.barrios@tecma.com";
+				let pending = "1";
+				let fileBuffer = null;
+				// let fileBuffer = Buffer.alloc(0);
+				let letterType;
+				let newFileName;
+				let mail;
+				let hr_id;
 
-				const padZero = (num, size = 2) => String(num).padStart(size, "0");
+				// let response = "Done";
+				// if (fileName === null) {
+				// 	newFileName = "SinArchivo";
+				// }
 
-				const year = currentDate.getFullYear();
-				const month = padZero(currentDate.getMonth() + 1); // Months are zero-indexed
-				const day = padZero(currentDate.getDate());
+				const getFormattedDateTime = () => {
+					const currentDate = new Date();
 
-				const hours24 = currentDate.getHours();
-				const minutes = padZero(currentDate.getMinutes());
-				const seconds = padZero(currentDate.getSeconds());
-				const milliseconds = padZero(currentDate.getMilliseconds(), 3); // Milliseconds need 3 digits
+					const padZero = (num, size = 2) => String(num).padStart(size, "0");
 
-				// Generate original format (YYYY-MM-DD HH:MM:SS.mmm)
-				const formattedDateTime = `${year}-${month}-${day} ${padZero(
-					hours24
-				)}:${minutes}:${seconds}.${milliseconds}`;
+					const year = currentDate.getFullYear();
+					const month = padZero(currentDate.getMonth() + 1); // Months are zero-indexed
+					const day = padZero(currentDate.getDate());
 
-				// Convert hours to 12-hour format and create custom format (YYYYMMDDhhmm)
-				let hours12 = hours24 % 12 || 12; // Convert 24-hour to 12-hour format
-				const formattedCustom = `${year}${month}${day}${padZero(
-					hours12
-				)}${minutes}`;
+					const hours24 = currentDate.getHours();
+					const minutes = padZero(currentDate.getMinutes());
+					const seconds = padZero(currentDate.getSeconds());
+					const milliseconds = padZero(currentDate.getMilliseconds(), 3); // Milliseconds need 3 digits
 
-				// Return both formats
-				return { formattedDateTime, formattedCustom };
-			};
+					// Generate original format (YYYY-MM-DD HH:MM:SS.mmm)
+					const formattedDateTime = `${year}-${month}-${day} ${padZero(
+						hours24
+					)}:${minutes}:${seconds}.${milliseconds}`;
 
-			const getFormattedSalario = (amount) => {
-				const numalet = Numalet();
-				const amountInWords = numalet(amount);
-				const centavos = Math.round((amount % 1) * 100);
-				const formattedAmountInWords = `${amountInWords.toUpperCase()} CON ${centavos}/100 PESOS M.N.`;
+					// Convert hours to 12-hour format and create custom format (YYYYMMDDhhmm)
+					let hours12 = hours24 % 12 || 12; // Convert 24-hour to 12-hour format
+					const formattedCustom = `${year}${month}${day}${padZero(
+						hours12
+					)}${minutes}`;
 
-				return formattedAmountInWords;
-			};
+					// Return both formats
+					return { formattedDateTime, formattedCustom };
+				};
 
-			function getFormattedFolioFromDate() {
-				const date = new Date();
-				const year = date.getFullYear();
-				const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-based
-				const day = String(date.getDate()).padStart(2, "0");
-				const hours = String(date.getHours()).padStart(2, "0");
-				const minutes = String(date.getMinutes()).padStart(2, "0");
-				const seconds = String(date.getSeconds()).padStart(2, "0");
+				const getFormattedSalario = (amount) => {
+					const numalet = Numalet();
+					const amountInWords = numalet(amount);
+					const centavos = Math.round((amount % 1) * 100);
+					const formattedAmountInWords = `${amountInWords.toUpperCase()} CON ${centavos}/100 PESOS M.N.`;
 
-				return `${year}${month}${day}${hours}${minutes}${seconds}`;
-			}
+					return formattedAmountInWords;
+				};
 
-			const { formattedDateTime, formattedCustom } = getFormattedDateTime();
+				function getFormattedFolioFromDate() {
+					const date = new Date();
+					const year = date.getFullYear();
+					const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-based
+					const day = String(date.getDate()).padStart(2, "0");
+					const hours = String(date.getHours()).padStart(2, "0");
+					const minutes = String(date.getMinutes()).padStart(2, "0");
+					const seconds = String(date.getSeconds()).padStart(2, "0");
 
-			const directory = await executeQuery(
-				`Select
+					return `${year}${month}${day}${hours}${minutes}${seconds}`;
+				}
+
+				const { formattedDateTime, formattedCustom } = getFormattedDateTime();
+
+				const directory = await executeQuery(
+					`Select
 					CSC_RH.Nombre As nombre_rh,
 					CSC_RH.email As hr_advisor_email,
 					CSC_Asesor.email As csc_advisor_email,
@@ -2316,76 +2320,76 @@ const resolvers = {
 				Where
 					Planta = '${plant_id}'
 					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
-				}'`,
-				"Error obtaining CSC Data",
-				dbs.kioskotek
-			);
-			// console.log("Directory: ", directory);
+					}'`,
+					"Error obtaining CSC Data",
+					dbs.kioskotek
+				);
+				// console.log("Directory: ", directory);
 
-			if (directory[0]) {
-				hr_id = directory[0].hr_id_number;
-			} else {
-				hr_id = defaultHRID;
-			}
+				if (directory[0]) {
+					hr_id = directory[0].hr_id_number;
+				} else {
+					hr_id = defaultHRID;
+				}
 
-			function formatDateToSpanish(dateString) {
-				// Parse the date and convert it to local time
-				const localDate = new Date(dateString);
-				// console.log("Date string is: ", dateString);
-				// console.log("Local date string is: ", localDate);
+				function formatDateToSpanish(dateString) {
+					// Parse the date and convert it to local time
+					const localDate = new Date(dateString);
+					// console.log("Date string is: ", dateString);
+					// console.log("Local date string is: ", localDate);
 
-				const options = {
-					year: "numeric",
-					month: "long",
-					day: "numeric",
-					timeZone: "UTC",
-				};
+					const options = {
+						year: "numeric",
+						month: "long",
+						day: "numeric",
+						timeZone: "UTC",
+					};
 
-				// Get the formatted date string in Spanish (long format for months)
-				return localDate.toLocaleDateString("es-ES", options);
-			}
+					// Get the formatted date string in Spanish (long format for months)
+					return localDate.toLocaleDateString("es-ES", options);
+				}
 
-			switch (letter) {
-				case "CartaGuarderia":
-				case "CartaPrestamo":
-				case "CartaTrabajo":
-				case "CartaVisa":
-				case "CartaPermiso": {
-					if (letter === "CartaPrestamo") {
-						letterType = "Prestamo";
-					} else {
-						letterType = letter.substring(5);
-					}
-					newFileName = `${letter === "CartaPrestamo"
-						? "CartaSalario"
-						: letter === "CartaPermiso"
-							? "CartaViaje"
-							: letter
-						}_${numEmp} - ${formattedCustom}.pdf`;
-
-					let code = {};
-					switch (region) {
-						case "JRZ":
-						case "MTY":
-						case "AMX": {
-							code.supervisor = "3";
-							code.area = "5";
-							code.proyecto = "0";
-							code.planta = "7";
-							break;
+				switch (letter) {
+					case "CartaGuarderia":
+					case "CartaPrestamo":
+					case "CartaTrabajo":
+					case "CartaVisa":
+					case "CartaPermiso": {
+						if (letter === "CartaPrestamo") {
+							letterType = "Prestamo";
+						} else {
+							letterType = letter.substring(5);
 						}
-						case "SAL":
-						case "TIJ": {
-							code.supervisor = "8";
-							code.proyecto = "5";
-							code.area = "6";
-							code.planta = "1";
-							break;
-						}
-					}
+						newFileName = `${letter === "CartaPrestamo"
+							? "CartaSalario"
+							: letter === "CartaPermiso"
+								? "CartaViaje"
+								: letter
+							}_${numEmp} - ${formattedCustom}.pdf`;
 
-					const employeeData = await executeQuery(
-						`Select
+						let code = {};
+						switch (region) {
+							case "JRZ":
+							case "MTY":
+							case "AMX": {
+								code.supervisor = "3";
+								code.area = "5";
+								code.proyecto = "0";
+								code.planta = "7";
+								break;
+							}
+							case "SAL":
+							case "TIJ": {
+								code.supervisor = "8";
+								code.proyecto = "5";
+								code.area = "6";
+								code.planta = "1";
+								break;
+							}
+						}
+
+						const employeeData = await executeQuery(
+							`Select
 							CB_NOMBRES As nombres,
 							CB_APE_PAT As ape_paterno,
 							CB_APE_MAT As ape_materno,
@@ -2406,16 +2410,16 @@ const resolvers = {
 							INNER JOIN NIVEL${code.planta} AS PLANTA ON PLANTA.TB_CODIGO = COLABORA.CB_NIVEL${code.planta}
 						Where
 							CB_CODIGO = '${numEmp}'`,
-						"Error retrieving employee information",
-						dbs.colabora
-					);
+							"Error retrieving employee information",
+							dbs.colabora
+						);
 
 
 
-					console.log("Employee data: ", employeeData[0]);
+						console.log("Employee data: ", employeeData[0]);
 
-					const companyData = await executeQuery(
-						`SELECT
+						const companyData = await executeQuery(
+							`SELECT
 							RS_NOMBRE As razon_social,
 							RS_RFC As rfc_razon,
 							RP.TB_NUMREG as registro_patronal,
@@ -2432,105 +2436,105 @@ const resolvers = {
 							Inner Join ENTIDAD As EN On EN.TB_CODIGO = RS.RS_ENTIDAD
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
-						"Error retrieving employee information",
-						dbs.colabora
-					);
-					employeeData[0].id_proyecto = employeeData[0].id_proyecto.trim();
-					if (employeeData[0].id_proyecto === "H09") {
-						switch (employeeData[0].nombre_planta) {
-							case "PLANTA 18-1":
-								companyData[0].calle = "Boulevard Independencia";
-								companyData[0].num_ext = "1568";
-								companyData[0].colonia = "Col. Zaragoza";
-								companyData[0].codigo_postal = "32590";
-								companyData[0].ciudad = "Ciudad Juárez";
-								companyData[0].entidad = "Chihuahua";
-								break;
+							"Error retrieving employee information",
+							dbs.colabora
+						);
+						employeeData[0].id_proyecto = employeeData[0].id_proyecto.trim();
+						if (employeeData[0].id_proyecto === "H09") {
+							switch (employeeData[0].nombre_planta) {
+								case "PLANTA 18-1":
+									companyData[0].calle = "Boulevard Independencia";
+									companyData[0].num_ext = "1568";
+									companyData[0].colonia = "Col. Zaragoza";
+									companyData[0].codigo_postal = "32590";
+									companyData[0].ciudad = "Ciudad Juárez";
+									companyData[0].entidad = "Chihuahua";
+									break;
 
-							case "PLANTA 18-2":
-								companyData[0].calle = "Blvd. Manuel Talamás Camandari";
-								companyData[0].num_ext = "8610";
-								companyData[0].colonia = "Col. Lote Bravo";
-								companyData[0].codigo_postal = "32695";
-								companyData[0].ciudad = "Ciudad Juárez";
-								companyData[0].entidad = "Chihuahua";
-								break;
+								case "PLANTA 18-2":
+									companyData[0].calle = "Blvd. Manuel Talamás Camandari";
+									companyData[0].num_ext = "8610";
+									companyData[0].colonia = "Col. Lote Bravo";
+									companyData[0].codigo_postal = "32695";
+									companyData[0].ciudad = "Ciudad Juárez";
+									companyData[0].entidad = "Chihuahua";
+									break;
 
-							case "PLANTA 18-3":
-								companyData[0].calle = "Blvd. Manuel Talamás Camandari";
-								companyData[0].num_ext = "9020 Int. A";
-								companyData[0].colonia = "Col. Los Arcos";
-								companyData[0].codigo_postal = "32695";
-								companyData[0].ciudad = "Ciudad Juárez";
-								companyData[0].entidad = "Chihuahua";
-								break;
+								case "PLANTA 18-3":
+									companyData[0].calle = "Blvd. Manuel Talamás Camandari";
+									companyData[0].num_ext = "9020 Int. A";
+									companyData[0].colonia = "Col. Los Arcos";
+									companyData[0].codigo_postal = "32695";
+									companyData[0].ciudad = "Ciudad Juárez";
+									companyData[0].entidad = "Chihuahua";
+									break;
 
 
+							}
 						}
+						// console.log("Employee data: ", employeeData);
+						// console.log("Company data: ", companyData);
+						// console.log("Directory data: ", directory);
+						const formattedDate = formatDateToSpanish(new Date());
+
+						const pdfData = {
+							...directory[0],
+							...employeeData[0],
+							...companyData[0],
+							fecha: formattedDate,
+						};
+
+						const antiguedadDate = new Date(pdfData.antiguedad); // Convert the ISO string to a Date object
+
+						pdfData.salario_mensual = (pdfData.salario * 30.4).toFixed(2);
+						pdfData.salario_mensual_letra = getFormattedSalario(
+							pdfData.salario_mensual
+						);
+
+						pdfData.antiguedad = formatDateToSpanish(antiguedadDate);
+						pdfData.tipo = letter;
+
+						let logoName;
+						// console.log("Project is: ", data.project.trim());
+						if (data.project.trim() === "H09") {
+							logoName = "FLEXSTEEL.png";
+						} else if (data.project.trim() === "H75") {
+							logoName = "CLEAR.png";
+						} else {
+							logoName = "LOGOTECMA.png";
+						}
+
+						const imageBase64 = fs
+							.readFileSync(
+								path.join(__dirname, `../../public/assets/images/${logoName}`)
+							)
+							.toString("base64");
+
+						pdfData.imageBase64 = imageBase64;
+						// console.log("pdfData: ", pdfData);
+						// return;
+
+						console.log("Generating letter pdf...");
+						try {
+							fileBuffer = await generateLetterPDF({ data: pdfData });
+							// console.log(Buffer.isBuffer(fileBuffer));
+							// console.log("After checking buffer again");
+							// fileBuffer = Buffer.from(file, "base64");
+							// return { pdfFile: fileBuffer };
+						} catch (err) {
+							console.error("Error generating letter PDF:", err);
+							throw new Error("Failed to create letter PDF.");
+						}
+						// return;
+						break;
 					}
-					// console.log("Employee data: ", employeeData);
-					// console.log("Company data: ", companyData);
-					// console.log("Directory data: ", directory);
-					const formattedDate = formatDateToSpanish(new Date());
+					// return "Done";
 
-					const pdfData = {
-						...directory[0],
-						...employeeData[0],
-						...companyData[0],
-						fecha: formattedDate,
-					};
-
-					const antiguedadDate = new Date(pdfData.antiguedad); // Convert the ISO string to a Date object
-
-					pdfData.salario_mensual = (pdfData.salario * 30.4).toFixed(2);
-					pdfData.salario_mensual_letra = getFormattedSalario(
-						pdfData.salario_mensual
-					);
-
-					pdfData.antiguedad = formatDateToSpanish(antiguedadDate);
-					pdfData.tipo = letter;
-
-					let logoName;
-					// console.log("Project is: ", data.project.trim());
-					if (data.project.trim() === "H09") {
-						logoName = "FLEXSTEEL.png";
-					} else if (data.project.trim() === "H75") {
-						logoName = "CLEAR.png";
-					} else {
-						logoName = "LOGOTECMA.png";
-					}
-
-					const imageBase64 = fs
-						.readFileSync(
-							path.join(__dirname, `../../public/assets/images/${logoName}`)
-						)
-						.toString("base64");
-
-					pdfData.imageBase64 = imageBase64;
-					// console.log("pdfData: ", pdfData);
-					// return;
-
-					console.log("Generating letter pdf...");
-					try {
-						fileBuffer = await generateLetterPDF({ data: pdfData });
-						// console.log(Buffer.isBuffer(fileBuffer));
-						// console.log("After checking buffer again");
-						// fileBuffer = Buffer.from(file, "base64");
-						// return { pdfFile: fileBuffer };
-					} catch (err) {
-						console.error("Error generating letter PDF:", err);
-						throw new Error("Failed to create letter PDF.");
-					}
-					// return;
-					break;
-				}
-				// return "Done";
-
-				case "AjustePrenom":
-				case "PermisoDias":
-				case "Vacaciones": {
-					const companyData = await executeQuery(
-						`SELECT
+					case "AjustePrenom":
+					case "PermisoDias":
+					case "Vacaciones": {
+						const companyData = await executeQuery(
+							`SELECT
 							RS_NOMBRE As razon_social
 						FROM
 							COLABORA As C
@@ -2538,191 +2542,191 @@ const resolvers = {
 							Inner Join RSOCIAL As RS On RS.RS_CODIGO = RP.RS_CODIGO
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
-						"Error retrieving company information",
-						dbs.colabora
-					);
+							"Error retrieving company information",
+							dbs.colabora
+						);
 
-					const formattedDate = formatDateToSpanish(new Date());
+						const formattedDate = formatDateToSpanish(new Date());
 
-					const pdfData = {
-						...data,
-						...companyData[0],
-						...directory[0],
-						fecha: formattedDate,
-					};
-					pdfData.folio = getFormattedFolioFromDate();
+						const pdfData = {
+							...data,
+							...companyData[0],
+							...directory[0],
+							fecha: formattedDate,
+						};
+						pdfData.folio = getFormattedFolioFromDate();
 
-					console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
+						console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
 
-					let logoName;
+						let logoName;
 
-					if (data.project.trim() === "H09") {
-						logoName = "FLEXSTEEL.png";
-					} else if (data.project.trim() === "H75") {
-						logoName = "CLEAR.png";
-					} else {
-						logoName = "LOGOTECMA.png";
-					}
-
-					const imageBase64 = fs
-						.readFileSync(
-							path.join(__dirname, `../../public/assets/images/${logoName}`)
-						)
-						.toString("base64");
-
-					pdfData.imageBase64 = imageBase64;
-
-					if (letter === "AjustePrenom") {
-						letterType = "Ajuste";
-						pdfData.dia_ajuste = formatDateToSpanish(data.day_to_adjust);
-						// console.log("Day to adjust: ", day_to_adjust, ", period: ", period);
-
-						console.log(`Generating ${letterType} pdf...`);
-						try {
-							fileBuffer = await generateAdjustmentPDF({ data: pdfData });
-						} catch (err) {
-							console.error(`Error generating ${letterType} PDF:`, err);
-							throw new Error(`Failed to create ${letterType} PDF.`);
+						if (data.project.trim() === "H09") {
+							logoName = "FLEXSTEEL.png";
+						} else if (data.project.trim() === "H75") {
+							logoName = "CLEAR.png";
+						} else {
+							logoName = "LOGOTECMA.png";
 						}
-					} else if (letter === "PermisoDias") {
-						letterType = "Permiso";
-						pdfData.fecha_inicio = formatDateToSpanish(data.start_date);
-						pdfData.fecha_fin = formatDateToSpanish(data.end_date);
-						console.log(`Generating ${letterType} pdf...`);
-						try {
-							fileBuffer = await generatePermitPDF({ data: pdfData });
-						} catch (err) {
-							console.error(`Error generating ${letterType} PDF:`, err);
-							throw new Error(`Failed to create ${letterType} PDF.`);
-						}
-					} else if (letter === "Vacaciones") {
-						letterType = letter;
-						pdfData.fecha_inicio = formatDateToSpanish(data.start_date);
-						pdfData.fecha_fin = formatDateToSpanish(data.end_date);
 
-						// console.log("pdfData again is: ", pdfData);
-						console.log(`Generating ${letterType} pdf...`);
+						const imageBase64 = fs
+							.readFileSync(
+								path.join(__dirname, `../../public/assets/images/${logoName}`)
+							)
+							.toString("base64");
+
+						pdfData.imageBase64 = imageBase64;
+
+						if (letter === "AjustePrenom") {
+							letterType = "Ajuste";
+							pdfData.dia_ajuste = formatDateToSpanish(data.day_to_adjust);
+							// console.log("Day to adjust: ", day_to_adjust, ", period: ", period);
+
+							console.log(`Generating ${letterType} pdf...`);
+							try {
+								fileBuffer = await generateAdjustmentPDF({ data: pdfData });
+							} catch (err) {
+								console.error(`Error generating ${letterType} PDF:`, err);
+								throw new Error(`Failed to create ${letterType} PDF.`);
+							}
+						} else if (letter === "PermisoDias") {
+							letterType = "Permiso";
+							pdfData.fecha_inicio = formatDateToSpanish(data.start_date);
+							pdfData.fecha_fin = formatDateToSpanish(data.end_date);
+							console.log(`Generating ${letterType} pdf...`);
+							try {
+								fileBuffer = await generatePermitPDF({ data: pdfData });
+							} catch (err) {
+								console.error(`Error generating ${letterType} PDF:`, err);
+								throw new Error(`Failed to create ${letterType} PDF.`);
+							}
+						} else if (letter === "Vacaciones") {
+							letterType = letter;
+							pdfData.fecha_inicio = formatDateToSpanish(data.start_date);
+							pdfData.fecha_fin = formatDateToSpanish(data.end_date);
+
+							// console.log("pdfData again is: ", pdfData);
+							console.log(`Generating ${letterType} pdf...`);
+							// return { pdfFile: "Done" };
+							try {
+								fileBuffer = await generateVacationsPDF({ data: pdfData });
+							} catch (err) {
+								console.error(`Error generating ${letterType} PDF:`, err);
+								throw new Error(`Failed to create ${letterType} PDF.`);
+							}
+						}
+
+						newFileName = `${letter}_${numEmp} - ${formattedCustom}.pdf`;
+
 						// return { pdfFile: "Done" };
-						try {
-							fileBuffer = await generateVacationsPDF({ data: pdfData });
-						} catch (err) {
-							console.error(`Error generating ${letterType} PDF:`, err);
-							throw new Error(`Failed to create ${letterType} PDF.`);
+						break;
+					}
+					case "Banorte": {
+						letterType = letter;
+						if (fileName !== null) {
+							newFileName = `Motivo: ${motive}, Código: ${fileName}`;
+						} else {
+							newFileName = motive;
 						}
+						break;
+					}
+					// fileBuffer = ""
+					case "Gafete": {
+						letterType = letter;
+						newFileName = "ParaImpresion";
+						break;
+					}
+					case "Despensa": {
+						letterType = letter;
+						newFileName = `Motivo: ${motive}`;
+						break;
+					}
+					case "NIP": {
+						pending = "0";
+						letterType = letter;
+						newFileName = "ResetNIP";
+						break;
 					}
 
-					newFileName = `${letter}_${numEmp} - ${formattedCustom}.pdf`;
+					case "AltaIMSS": {
+						// const folio = await executeQuery(
+						// 	`Select
+						// 		CB_CODIGO as Empl,
+						// 		CB_TIPO as Tipo,
+						// 		CB_FECHA as Fecha,
+						// 		CB_LOT_IDS as Lote
+						// 	From
+						// 		KARDEX
+						// 	Where
+						// 		CB_CODIGO = '${numEmp}'
+						// 		and CB_TIPO = 'ALTA'
+						// 		and CB_FECHA = (
+						// 			Select
+						// 				MAX(CB_FECHA)
+						// 			From
+						// 				KARDEX
+						// 			Where
+						// 				CB_TIPO = 'ALTA'
+						// 				and CB_CODIGO = '${numEmp}'
+						// 		)`,
+						// 	"Error retrieving folio",
+						// 	dbs.colabora
+						// );
+						pending = "0";
+						letterType = letter;
+						newFileName = "NoArchivo";
 
-					// return { pdfFile: "Done" };
-					break;
-				}
-				case "Banorte": {
-					letterType = letter;
-					if (fileName !== null) {
-						newFileName = `Motivo: ${motive}, Código: ${fileName}`;
-					} else {
-						newFileName = motive;
-					}
-					break;
-				}
-				// fileBuffer = ""
-				case "Gafete": {
-					letterType = letter;
-					newFileName = "ParaImpresion";
-					break;
-				}
-				case "Despensa": {
-					letterType = letter;
-					newFileName = `Motivo: ${motive}`;
-					break;
-				}
-				case "NIP": {
-					pending = "0";
-					letterType = letter;
-					newFileName = "ResetNIP";
-					break;
-				}
+						// try {
+						// 	const pdfBuffer = await generateIMSSPDF({ data });
 
-				case "AltaIMSS": {
-					// const folio = await executeQuery(
-					// 	`Select
-					// 		CB_CODIGO as Empl,
-					// 		CB_TIPO as Tipo,
-					// 		CB_FECHA as Fecha,
-					// 		CB_LOT_IDS as Lote
-					// 	From
-					// 		KARDEX
-					// 	Where
-					// 		CB_CODIGO = '${numEmp}'
-					// 		and CB_TIPO = 'ALTA'
-					// 		and CB_FECHA = (
-					// 			Select
-					// 				MAX(CB_FECHA)
-					// 			From
-					// 				KARDEX
-					// 			Where
-					// 				CB_TIPO = 'ALTA'
-					// 				and CB_CODIGO = '${numEmp}'
-					// 		)`,
-					// 	"Error retrieving folio",
-					// 	dbs.colabora
-					// );
-					pending = "0";
-					letterType = letter;
-					newFileName = "NoArchivo";
+						// 	fileBuffer = pdfBuffer.toString("base64");
 
-					// try {
-					// 	const pdfBuffer = await generateIMSSPDF({ data });
+						// 	// return { pdfFile: fileBuffer };
+						// } catch (err) {
+						// 	console.error("Error generating PDF:", err);
+						// 	throw new Error("Failed to create PDF.");
+						// }
+						console.log("Generating IMSS pdf...");
 
-					// 	fileBuffer = pdfBuffer.toString("base64");
-
-					// 	// return { pdfFile: fileBuffer };
-					// } catch (err) {
-					// 	console.error("Error generating PDF:", err);
-					// 	throw new Error("Failed to create PDF.");
-					// }
-					console.log("Generating IMSS pdf...");
-
-					break;
-				}
-
-				case "Domicilio": {
-					letterType = letter;
-					let fileExtension;
-
-					if (fileName === "image.jpg") {
-						fileExtension = "jpg";
-					} else if (fileName === "document.pdf") {
-						fileExtension = "pdf";
-					} else {
-						throw new Error("Invalid file type. Only JPG and PDF are allowed.");
+						break;
 					}
 
-					newFileName = `Domicilio_${numEmp} - ${formattedCustom}.${fileExtension}`;
-					// Imagen o pdf
+					case "Domicilio": {
+						letterType = letter;
+						let fileExtension;
 
-					console.log("Reading file...");
+						if (fileName === "image.jpg") {
+							fileExtension = "jpg";
+						} else if (fileName === "document.pdf") {
+							fileExtension = "pdf";
+						} else {
+							throw new Error("Invalid file type. Only JPG and PDF are allowed.");
+						}
 
-					fileBuffer = Buffer.from(file, "base64");
-					break;
-				}
-				case "PtmoFA": {
-					letterType = letter;
-					const blockedEmployees = new Set([
-						"1301473", "1302017", "1301572", "1301845", "1301349", "130469", "1302146",
-						"1301257", "130391", "1301815", "1301835", "1301258", "1302155", "1309013",
-						"1301914", "1302004", "1301622", "1301483", "1301968", "1301579", "1301706",
-						"1301728", "1301661", "1301831", "1301850", "1302016", "1301905", "1301276",
-						"1301786"
-					]);
+						newFileName = `Domicilio_${numEmp} - ${formattedCustom}.${fileExtension}`;
+						// Imagen o pdf
 
-					if (blockedEmployees.has(numEmp) || data.plant_id.trim() === "8-41") {
-						return { pdfFile: "Exists" };
+						console.log("Reading file...");
+
+						fileBuffer = Buffer.from(file, "base64");
+						break;
 					}
-					letterType = letter;
-					const interestRate = 0.159;
-					const prestamo = await executeQuery(
-						`Declare @CurrentYear INT = YEAR(GETDATE());
+					case "PtmoFA": {
+						letterType = letter;
+						const blockedEmployees = new Set([
+							"1301473", "1302017", "1301572", "1301845", "1301349", "130469", "1302146",
+							"1301257", "130391", "1301815", "1301835", "1301258", "1302155", "1309013",
+							"1301914", "1302004", "1301622", "1301483", "1301968", "1301579", "1301706",
+							"1301728", "1301661", "1301831", "1301850", "1302016", "1301905", "1301276",
+							"1301786"
+						]);
+
+						if (blockedEmployees.has(numEmp) || data.plant_id.trim() === "8-41") {
+							return { pdfFile: "Exists" };
+						}
+						letterType = letter;
+						const interestRate = 0.159;
+						const prestamo = await executeQuery(
+							`Declare @CurrentYear INT = YEAR(GETDATE());
 						Declare @Exists NVARCHAR(5);
 		
 						Set @Exists = (
@@ -2751,12 +2755,12 @@ const resolvers = {
 												WHERE CB_CODIGO = '${numEmp}' 
 													AND AH_STATUS = 0 
 													AND AH_TIPO = '2');`,
-						"Error fetching prenomina days information",
-						dbs.colabora
-					);
+							"Error fetching prenomina days information",
+							dbs.colabora
+						);
 
-					const prestamoKiosko = await executeQuery(
-						`Declare @CurrentYear INT = YEAR(GETDATE());
+						const prestamoKiosko = await executeQuery(
+							`Declare @CurrentYear INT = YEAR(GETDATE());
 						Declare @Exists NVARCHAR(5);
 		
 						Set @Exists = (
@@ -2773,112 +2777,112 @@ const resolvers = {
 		
 						Select 
 							@Exists As prestamoExists`,
-						"Error fetching existing loan k",
-						dbs.kioskotek
-					);
+							"Error fetching existing loan k",
+							dbs.kioskotek
+						);
 
-					const isLoanAllowed =
-						prestamo[0].prestamoExists === "true" ? true : false;
+						const isLoanAllowed =
+							prestamo[0].prestamoExists === "true" ? true : false;
 
-					const isLoanRequested =
-						prestamoKiosko[0].prestamoExists === "true" ? true : false;
-					console.log("isLoanAllowed: ", isLoanAllowed);
+						const isLoanRequested =
+							prestamoKiosko[0].prestamoExists === "true" ? true : false;
+						console.log("isLoanAllowed: ", isLoanAllowed);
 
-					if (isLoanAllowed) {
-						console.log("Loan exists, denying.");
-						return { pdfFile: "Exists" };
-					}
+						if (isLoanAllowed) {
+							console.log("Loan exists, denying.");
+							return { pdfFile: "Exists" };
+						}
 
-					if (isLoanRequested) {
-						console.log("Already requested loan, denying.");
-						return { pdfFile: "Existing requisition" };
-					}
+						if (isLoanRequested) {
+							console.log("Already requested loan, denying.");
+							return { pdfFile: "Existing requisition" };
+						}
 
-					const balance = returnZero(prestamo[0].balance);
-					if (requested_loan > balance * 0.9 || requested_loan < balance * 0.1)
-						return { pdfFile: "Limit" };
-					console.log("Balance is: ", balance);
+						const balance = returnZero(prestamo[0].balance);
+						if (requested_loan > balance * 0.9 || requested_loan < balance * 0.1)
+							return { pdfFile: "Limit" };
+						console.log("Balance is: ", balance);
 
-					const prestamo_weeks = await executeQuery(
-						`SELECT TOP 1 
+						const prestamo_weeks = await executeQuery(
+							`SELECT TOP 1 
 						semana_inicial AS initial_week,
 							semana_final AS final_week
 							FROM Prestamos
 							ORDER BY fecha DESC;`,
-						"Error fetching prestamo weeks information",
-						dbs.tecmamovil
-					);
+							"Error fetching prestamo weeks information",
+							dbs.tecmamovil
+						);
 
-					const initial_week = prestamo_weeks[0].initial_week;
-					const final_week = prestamo_weeks[0].final_week;
+						const initial_week = prestamo_weeks[0].initial_week;
+						const final_week = prestamo_weeks[0].final_week;
 
-					const getWeekDates = async (year, weekNumber) => {
-						console.log("Week number: ", weekNumber);
-						// Get the first day of the year
-						const firstDayOfYear = new Date(year, 0, 1);
-						const firstSaturdayOfYear = new Date(firstDayOfYear);
+						const getWeekDates = async (year, weekNumber) => {
+							console.log("Week number: ", weekNumber);
+							// Get the first day of the year
+							const firstDayOfYear = new Date(year, 0, 1);
+							const firstSaturdayOfYear = new Date(firstDayOfYear);
 
-						// Find the first Saturday of the year
-						while (firstSaturdayOfYear.getDay() !== 6) {
-							firstSaturdayOfYear.setDate(firstSaturdayOfYear.getDate() + 1);
+							// Find the first Saturday of the year
+							while (firstSaturdayOfYear.getDay() !== 6) {
+								firstSaturdayOfYear.setDate(firstSaturdayOfYear.getDate() + 1);
+							}
+
+							// Calculate the offset for the desired week number
+							const daysOffset = (weekNumber - 1) * 7;
+							const startOfWeek = new Date(
+								firstSaturdayOfYear.setDate(
+									firstSaturdayOfYear.getDate() + daysOffset
+								)
+							);
+							const endOfWeek = new Date(startOfWeek);
+							endOfWeek.setDate(startOfWeek.getDate() + 6); // Last day of the week
+
+							console.log(
+								"Start of week: ",
+								startOfWeek,
+								" end of week: ",
+								endOfWeek
+							);
+							return {
+								firstDay: startOfWeek,
+								lastDay: endOfWeek,
+							};
+						};
+
+						const currentYear = new Date().getFullYear();
+
+						const startDate = await getWeekDates(currentYear, initial_week);
+
+						const endDate = await getWeekDates(currentYear, final_week);
+
+						let availableWeeks;
+						const today = new Date();
+						if (today >= startDate.firstDay && today <= endDate.lastDay) {
+							const diffInTime = endDate.lastDay - today;
+							const diffInWeeks = Math.ceil(
+								diffInTime / (1000 * 60 * 60 * 24 * 7)
+							);
+
+							availableWeeks = diffInWeeks;
+						} else {
+							console.log("Out of range");
+							return { pdfFile: "OutOfRange" };
 						}
 
-						// Calculate the offset for the desired week number
-						const daysOffset = (weekNumber - 1) * 7;
-						const startOfWeek = new Date(
-							firstSaturdayOfYear.setDate(
-								firstSaturdayOfYear.getDate() + daysOffset
-							)
-						);
-						const endOfWeek = new Date(startOfWeek);
-						endOfWeek.setDate(startOfWeek.getDate() + 6); // Last day of the week
+						if (loan_weeks > availableWeeks) return { pdfFile: "ExceedsPeriod" };
 
-						console.log(
-							"Start of week: ",
-							startOfWeek,
-							" end of week: ",
-							endOfWeek
-						);
-						return {
-							firstDay: startOfWeek,
-							lastDay: endOfWeek,
-						};
-					};
-
-					const currentYear = new Date().getFullYear();
-
-					const startDate = await getWeekDates(currentYear, initial_week);
-
-					const endDate = await getWeekDates(currentYear, final_week);
-
-					let availableWeeks;
-					const today = new Date();
-					if (today >= startDate.firstDay && today <= endDate.lastDay) {
-						const diffInTime = endDate.lastDay - today;
-						const diffInWeeks = Math.ceil(
-							diffInTime / (1000 * 60 * 60 * 24 * 7)
+						const interest = parseFloat(
+							((interestRate * loan_weeks * requested_loan) / 100).toFixed(2)
 						);
 
-						availableWeeks = diffInWeeks;
-					} else {
-						console.log("Out of range");
-						return { pdfFile: "OutOfRange" };
-					}
+						const totalToPay = parseFloat((requested_loan + interest).toFixed(2));
 
-					if (loan_weeks > availableWeeks) return { pdfFile: "ExceedsPeriod" };
+						const weekly_discount = parseFloat(
+							(totalToPay / loan_weeks).toFixed(2)
+						);
 
-					const interest = parseFloat(
-						((interestRate * loan_weeks * requested_loan) / 100).toFixed(2)
-					);
-
-					const totalToPay = parseFloat((requested_loan + interest).toFixed(2));
-
-					const weekly_discount = parseFloat(
-						(totalToPay / loan_weeks).toFixed(2)
-					);
-
-					const companyData = await executeQuery(
-						`SELECT
+						const companyData = await executeQuery(
+							`SELECT
 							RS_NOMBRE As razon_social
 						FROM
 							COLABORA As C
@@ -2886,101 +2890,101 @@ const resolvers = {
 							Inner Join RSOCIAL As RS On RS.RS_CODIGO = RP.RS_CODIGO
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
-						"Error retrieving company information",
-						dbs.colabora
-					);
+							"Error retrieving company information",
+							dbs.colabora
+						);
 
-					const formattedDate = formatDateToSpanish(new Date());
+						const formattedDate = formatDateToSpanish(new Date());
 
-					const pdfData = {
-						...data,
-						...companyData[0],
-						...directory[0],
-						fecha: formattedDate,
-					};
-
-					pdfData.requested_loan = requested_loan.toFixed(2);
-					pdfData.loan_weeks = loan_weeks.toFixed(2);
-					pdfData.interest = interest.toFixed(2);
-					pdfData.total = totalToPay.toFixed(2);
-					pdfData.weekly_discount = weekly_discount.toFixed(2);
-
-					console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
-
-					let logoName;
-
-					if (data.project.trim() === "H09") {
-						logoName = "FLEXSTEEL.png";
-					} else if (data.project.trim() === "H75") {
-						logoName = "CLEAR.png";
-					} else {
-						logoName = "LOGOTECMA.png";
-					}
-
-					const imageBase64 = fs
-						.readFileSync(
-							path.join(__dirname, `../../public/assets/images/${logoName}`)
-						)
-						.toString("base64");
-
-					pdfData.imageBase64 = imageBase64;
-
-					console.log(`Generating ${letterType} pdf...`);
-					try {
-						fileBuffer = await generateSavingsLoanPDF({ data: pdfData });
-					} catch (err) {
-						console.error(`Error generating ${letterType} PDF:`, err);
-						return { pdfFile: "Error" };
-					}
-
-					newFileName = `PtmoFA_${numEmp} - ${formattedCustom}.pdf`;
-					// try {
-					// 	const pdfBuffer = await generateSavingsLoanPDF({ data });
-
-					// 	// return { pdfFile: fileBuffer };
-					// } catch (err) {
-					// 	console.error("Error generating PDF:", err);
-					// 	throw new Error("Failed to create PDF.");
-					// }
-					console.log("Generating savings loan pdf...");
-					break;
-				}
-				case "RetiroFA": {
-					letterType = letter;
-
-					const formatDateToSpanish = () => {
-						const localDate = new Date();
-
-						const options = {
-							year: "numeric",
-							month: "long",
-							day: "numeric",
-							timeZone: "UTC",
+						const pdfData = {
+							...data,
+							...companyData[0],
+							...directory[0],
+							fecha: formattedDate,
 						};
 
-						return localDate.toLocaleDateString("es-ES", options);
-					};
+						pdfData.requested_loan = requested_loan.toFixed(2);
+						pdfData.loan_weeks = loan_weeks.toFixed(2);
+						pdfData.interest = interest.toFixed(2);
+						pdfData.total = totalToPay.toFixed(2);
+						pdfData.weekly_discount = weekly_discount.toFixed(2);
 
-					const getFormattedDateTime = () => {
-						const currentDate = new Date();
+						console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
 
-						const padZero = (num, size = 2) => String(num).padStart(size, "0");
+						let logoName;
 
-						const year = currentDate.getFullYear();
-						const month = padZero(currentDate.getMonth() + 1);
-						const day = padZero(currentDate.getDate());
+						if (data.project.trim() === "H09") {
+							logoName = "FLEXSTEEL.png";
+						} else if (data.project.trim() === "H75") {
+							logoName = "CLEAR.png";
+						} else {
+							logoName = "LOGOTECMA.png";
+						}
 
-						const hours24 = currentDate.getHours();
-						const minutes = padZero(currentDate.getMinutes());
-						const seconds = padZero(currentDate.getSeconds());
+						const imageBase64 = fs
+							.readFileSync(
+								path.join(__dirname, `../../public/assets/images/${logoName}`)
+							)
+							.toString("base64");
 
-						return `${day}-${month}-${year} ${padZero(
-							hours24
-						)}:${minutes}:${seconds}`;
-					};
+						pdfData.imageBase64 = imageBase64;
 
-					const companyData = await executeQuery(
-						`SELECT
+						console.log(`Generating ${letterType} pdf...`);
+						try {
+							fileBuffer = await generateSavingsLoanPDF({ data: pdfData });
+						} catch (err) {
+							console.error(`Error generating ${letterType} PDF:`, err);
+							return { pdfFile: "Error" };
+						}
+
+						newFileName = `PtmoFA_${numEmp} - ${formattedCustom}.pdf`;
+						// try {
+						// 	const pdfBuffer = await generateSavingsLoanPDF({ data });
+
+						// 	// return { pdfFile: fileBuffer };
+						// } catch (err) {
+						// 	console.error("Error generating PDF:", err);
+						// 	throw new Error("Failed to create PDF.");
+						// }
+						console.log("Generating savings loan pdf...");
+						break;
+					}
+					case "RetiroFA": {
+						letterType = letter;
+
+						const formatDateToSpanish = () => {
+							const localDate = new Date();
+
+							const options = {
+								year: "numeric",
+								month: "long",
+								day: "numeric",
+								timeZone: "UTC",
+							};
+
+							return localDate.toLocaleDateString("es-ES", options);
+						};
+
+						const getFormattedDateTime = () => {
+							const currentDate = new Date();
+
+							const padZero = (num, size = 2) => String(num).padStart(size, "0");
+
+							const year = currentDate.getFullYear();
+							const month = padZero(currentDate.getMonth() + 1);
+							const day = padZero(currentDate.getDate());
+
+							const hours24 = currentDate.getHours();
+							const minutes = padZero(currentDate.getMinutes());
+							const seconds = padZero(currentDate.getSeconds());
+
+							return `${day}-${month}-${year} ${padZero(
+								hours24
+							)}:${minutes}:${seconds}`;
+						};
+
+						const companyData = await executeQuery(
+							`SELECT
 							RS_NOMBRE As razon_social,
 							RS_CALLE As calle,
 							RS_NUMEXT As num_ext,
@@ -2995,119 +2999,123 @@ const resolvers = {
 							Inner Join ENTIDAD As EN On EN.TB_CODIGO = RS.RS_ENTIDAD
 						WHERE
 							C.CB_CODIGO = ${numEmp}`,
-						"Error retrieving employee information",
-						dbs.colabora
-					);
+							"Error retrieving employee information",
+							dbs.colabora
+						);
 
-					const formattedDate = formatDateToSpanish();
-					const detailedDate = getFormattedDateTime();
-					console.log("Date is: ", detailedDate);
+						const formattedDate = formatDateToSpanish();
+						const detailedDate = getFormattedDateTime();
+						console.log("Date is: ", detailedDate);
 
-					const tel_empresa = "(656) 649-1000";
+						const tel_empresa = "(656) 649-1000";
 
-					const pdfData = {
-						numEmp,
-						name,
-						project,
-						plant_id,
-						...companyData[0],
-						fecha: formattedDate,
-						fecha_det: detailedDate,
-						tel_empresa,
-					};
+						const pdfData = {
+							numEmp,
+							name,
+							project,
+							plant_id,
+							...companyData[0],
+							fecha: formattedDate,
+							fecha_det: detailedDate,
+							tel_empresa,
+						};
 
-					console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
+						console.log("pdfData values: ", JSON.stringify(pdfData, null, 1));
 
-					let logoName;
+						let logoName;
 
-					if (data.project.trim() === "H09") {
-						logoName = "FLEXSTEEL.png";
-					} else if (data.project.trim() === "H75") {
-						logoName = "CLEAR.png";
-					} else {
-						logoName = "LOGOTECMA.png";
+						if (data.project.trim() === "H09") {
+							logoName = "FLEXSTEEL.png";
+						} else if (data.project.trim() === "H75") {
+							logoName = "CLEAR.png";
+						} else {
+							logoName = "LOGOTECMA.png";
+						}
+
+						const imageBase64 = fs
+							.readFileSync(
+								path.join(__dirname, `../../public/assets/images/${logoName}`)
+							)
+							.toString("base64");
+
+						pdfData.imageBase64 = imageBase64;
+
+						console.log(`Generating ${letterType} pdf...`);
+						try {
+							fileBuffer = await generateSavingWithdrawPDF({ data: pdfData });
+						} catch (err) {
+							console.error(`Error generating ${letterType} PDF:`, err);
+							throw new Error(`Failed to create ${letterType} PDF.`);
+						}
+
+						newFileName = `RetiroFA_${numEmp} - ${formattedCustom}.pdf`;
+						console.log("Generated savings withdraw pdf...");
+
+						break;
 					}
 
-					const imageBase64 = fs
-						.readFileSync(
-							path.join(__dirname, `../../public/assets/images/${logoName}`)
-						)
-						.toString("base64");
-
-					pdfData.imageBase64 = imageBase64;
-
-					console.log(`Generating ${letterType} pdf...`);
-					try {
-						fileBuffer = await generateSavingWithdrawPDF({ data: pdfData });
-					} catch (err) {
-						console.error(`Error generating ${letterType} PDF:`, err);
-						throw new Error(`Failed to create ${letterType} PDF.`);
-					}
-
-					newFileName = `RetiroFA_${numEmp} - ${formattedCustom}.pdf`;
-					console.log("Generated savings withdraw pdf...");
-
-					break;
+					default:
+						break;
 				}
 
-				default:
-					break;
-			}
+				switch (letter) {
+					// RH
+					case "CartaGuarderia":
+					case "CartaPrestamo":
+					case "CartaTrabajo":
+					case "CartaVisa":
+					case "CartaPermiso":
+					case "PermisoDias":
+					case "Vacaciones":
+					case "Despensa":
+					case "Domicilio":
+					case "RetiroFA":
+						if (project.trim() === "H63") {
+							mail = directory[0] ? directory[0].csc_advisor_email : defaultCSCMail;
+						} else {
+							mail = directory[0] ? directory[0].hr_advisor_email : defaultHRMail;
+						}
+						break;
 
-			switch (letter) {
-				// RH
-				case "CartaGuarderia":
-				case "CartaPrestamo":
-				case "CartaTrabajo":
-				case "CartaVisa":
-				case "CartaPermiso":
-				case "PermisoDias":
-				case "Vacaciones":
-				case "Despensa":
-				case "Domicilio":
-				case "RetiroFA":
-					mail = directory[0] ? directory[0].hr_advisor_email : defaultHRMail;
-					break;
+					// Asesor CSC
+					case "PtmoFA":
+					case "AjustePrenom":
+					case "Banorte":
+					case "Gafete":
+					case "AltaIMSS":
+						console.log("Datos en directorio de asesor asignado: ", directory[0])
+						mail = directory[0] ? directory[0].csc_advisor_email : defaultCSCMail;
+						console.log("Correo asignado: ", mail)
+						break;
 
-				// Asesor CSC
-				case "PtmoFA":
-				case "AjustePrenom":
-				case "Banorte":
-				case "Gafete":
-				case "AltaIMSS":
-					console.log("Datos en directorio de asesor asignado: ", directory[0])
-					mail = directory[0] ? directory[0].csc_advisor_email : defaultCSCMail;
-					console.log("Correo asignado: ", mail)
-					break;
+					// Especial
+					case "NIP":
+						hr_id = "0000";
+						mail = "albino.ramirez@tecma.com";
+						break;
+					default:
+						break;
+				}
+				// console.log(`numEmp: ${numEmp}, name: ${name},
+				// 	formattedDateTime: ${formattedDateTime},
+				// 	letter: ${letter},
+				// 	hr_id: ${hr_id},
+				// 	mail: ${mail},
+				// 	newFileName: ${newFileName},
+				// 	plant_id: ${letterType === "NIP" ? "" : plant_id},
+				// 	shift: ${letterType === "NIP" ? "" : shift},
+				// 	project: ${letterType === "NIP" ? "" : project},
+				// 	position: ${letterType === "NIP" ? "" : position},
+				// 	clasification: ${clasification},
+				// 	motive: ${motive},
+				// 	coment: ${coment},
+				// 	period: ${period},
+				// 	start_date: ${start_date},
+				// 	end_date: ${end_date},
+				// 	days: ${days}`);
 
-				// Especial
-				case "NIP":
-					hr_id = "0000";
-					mail = "albino.ramirez@tecma.com";
-					break;
-				default:
-					break;
-			}
-			// console.log(`numEmp: ${numEmp}, name: ${name},
-			// 	formattedDateTime: ${formattedDateTime},
-			// 	letter: ${letter},
-			// 	hr_id: ${hr_id},
-			// 	mail: ${mail},
-			// 	newFileName: ${newFileName},
-			// 	plant_id: ${letterType === "NIP" ? "" : plant_id},
-			// 	shift: ${letterType === "NIP" ? "" : shift},
-			// 	project: ${letterType === "NIP" ? "" : project},
-			// 	position: ${letterType === "NIP" ? "" : position},
-			// 	clasification: ${clasification},
-			// 	motive: ${motive},
-			// 	coment: ${coment},
-			// 	period: ${period},
-			// 	start_date: ${start_date},
-			// 	end_date: ${end_date},
-			// 	days: ${days}`);
-
-			await executeParameterizedQuery(
-				`Insert Into
+				await executeParameterizedQuery(
+					`Insert Into
 					K_Solicitudes (
 						No,
 						Nombre,
@@ -3130,29 +3138,34 @@ const resolvers = {
 					(@param1, @param2, @param3, @param4, @param5, @param6, @param7,
 					@param8, @param9, @param10, @param11, @param12, @param13,
 					@param14, @param15, @param16)`,
-				[
-					numEmp,
-					name,
-					formattedDateTime,
-					letterType,
-					hr_id,
-					mail,
-					newFileName,
-					fileBuffer,
-					pending,
-					letterType === "NIP" ? "" : plant_id,
-					letterType === "NIP" ? "" : shift,
-					letterType === "NIP" ? "" : project,
-					letterType === "NIP" ? "" : position,
-					clasification,
-					motive ? motive : null,
-					coment ? coment : null,
-				],
-				"Error while sending requisition",
-				dbs.kioskotek
-			);
-			console.log("Done");
-			return { pdfFile: "Done" };
+					[
+						numEmp,
+						name,
+						formattedDateTime,
+						letterType,
+						hr_id,
+						mail,
+						newFileName,
+						fileBuffer,
+						pending,
+						letterType === "NIP" ? "" : plant_id,
+						letterType === "NIP" ? "" : shift,
+						letterType === "NIP" ? "" : project,
+						letterType === "NIP" ? "" : position,
+						clasification,
+						motive ? motive : null,
+						coment ? coment : null,
+					],
+					"Error while sending requisition",
+					dbs.kioskotek
+				);
+				console.log("Done");
+				return { pdfFile: "Done" };
+			} catch (err) {
+				console.error(`Error at sendRequisition for user: ${numEmp}, error: ${err}`);
+				// throw new Error("Error processing request");
+				return { pdfFile: "Error" };
+			}
 		},
 		generatePayroll: async (_, { numEmp, region, period, year }) => {
 			console.log("Received Payroll Gen request from: ", numEmp);
