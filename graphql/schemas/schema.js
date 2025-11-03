@@ -347,6 +347,76 @@ const typeDefs = gql`
 		comment: String # Superior comment
 	}
 
+	input GenerateVacationCertificateInput {
+		numEmp: String!
+		region: String!
+		signature: String!  # base64-encoded PNG
+	}
+
+	type GenerateVacationCertificateResponse {
+		success: Boolean!
+		message: String!
+		pdfUrl: String
+	}
+
+	type LoginStatus {
+		id: String!
+		status: String!
+		encrypted: Boolean!
+		nip: String
+	}
+
+	type ResponseComplaintData {
+		success: Boolean!
+		message: String!
+		data: ComplaintInfo!
+	}
+
+	type ComplaintInfo {
+		email: String!
+		phone: String!
+	}
+
+	type Notification {
+		id: ID!
+		title: String!
+		message: String!
+		created_at: DateTime!
+		files: [NotificationFile]
+	}
+
+	type NotificationFile {
+		id: ID!
+		file_name: String
+	}
+
+	type NotificationFileUrl {
+		success: Boolean!
+		message: String!
+		url: String
+	}
+
+	input HandleCheckInInput {
+		numEmp: String!
+		region: String!
+	}
+
+	type HandleCheckInResponse {
+		success: Boolean!
+		message: String!
+	}
+
+	input AssignSurveysInput {
+		numEmpList: [String!]!
+		region: String!
+		surveyId: Int!
+	}
+
+	type AssignSurveysResponse {
+		success: Boolean!
+		message: String!
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -390,10 +460,14 @@ const typeDefs = gql`
 		TestQuery: String
 		IsSupervisor(numEmp: String!, region: String!): Response!
 		SuperiorRequests(numEmp: String!, region: String!): ResponseRequests!
+		ComplaintInfo(region: String!): ResponseComplaintData!
+		Notifications: [Notification]
+		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
 	}
 
 	type Mutation {
 		login(numEmp: String!, nip: String!, region: String!): ResponseLogin!
+		mockLogin(numEmpList: [String!]!, region: String!): [LoginStatus!]!
 		resetNIP(numEmp: String!, rfc: String!, newNIP: String!, region: String!): String!
 		addFamilyMember(
 			numEmp: String!
@@ -448,6 +522,9 @@ const typeDefs = gql`
 		requestQRData(input: QRInput!): ResponseData!
 		requestAbsence(input: RequestAbsenceInput!): Response!
 		handleAbsenceRequest(input: HandleAbsenceRequestInput!): Response!
+		generateVacationCertificate(input: GenerateVacationCertificateInput!): GenerateVacationCertificateResponse!
+		handleCheckIn(input: HandleCheckInInput!): HandleCheckInResponse!
+		assignSurveys(input: AssignSurveysInput!): AssignSurveysResponse!
 		testMutation: String
 	}
 `;
