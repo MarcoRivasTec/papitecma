@@ -40,6 +40,7 @@ const typeDefs = gql`
 		puesto_id: String!
 		turno: String!
 		clasificacion: String!
+		restricted_sections: [String!]
 	}
 
 	type Identificacion {
@@ -111,9 +112,9 @@ const typeDefs = gql`
 	}
 
 	type DiasVacs {
-		ganados: Int
-		tomados: Int
-		disponibles: Int
+		ganados: Float!
+		tomados: Float!
+		disponibles: Float!
 	}
 
 	type Vacaciones {
@@ -194,6 +195,9 @@ const typeDefs = gql`
 	type Prestamo {
 		saldo_fa: Float!
 		prestamo: Boolean!
+		initial_week: Int!
+		final_week: Int!
+		max_weeks: Int!
 	}
 
 	type Encuestas {
@@ -224,15 +228,33 @@ const typeDefs = gql`
 		critical: Boolean
 	}
 
+	type policy {
+		id: Int!
+		status: Boolean!
+		policy: String!
+		icon: String!
+		line_1: String!
+		line_2: String
+		line_3: String
+		ref_1: String!
+		ref_2: String
+		ref_3: String
+		ref_4: String
+		icon_ref_1: String!
+		icon_ref_2: String
+		icon_ref_3: String
+		icon_ref_4: String
+	}
+
 	input SubmitSurveyInput {
 		encuesta: Int! # Survey ID
-		numEmp: Int! # Employee number
+		numEmp: String! # Employee number
 		region: String! # Employee region
 		data: [QuestionInput!] # Array of questions and answers
 	}
 
 	input OpinionInput {
-		numEmp: Int!
+		numEmp: String!
 		region: String!
 		opinion: String!
 	}
@@ -243,25 +265,156 @@ const typeDefs = gql`
 	}
 
 	input QRInput {
-		numEmp: Int!
+		numEmp: String!
 		region: String!
 	}
 
 	type Response {
-		success: Boolean! # Indicates success or failure
-		message: String! # Success or error message
+		success: Boolean! #
+		message: String! #
 	}
 
 	type ResponseData {
-		success: Boolean! # Indicates success or failure
-		message: String! # Success or error message
+		success: Boolean! #
+		message: String! #
 		data: EmployeeData
+	}
+
+	type ResponseRequests {
+		success: Boolean! 
+		message: String! 
+		data: [Request]
+	}
+
+	type ResponseLogin {
+		success: Boolean!
+		message: String!
+		data: Token
+	}
+
+	type Policies {
+		success: Boolean!
+		message: String!
+		data: [policy]
 	}
 
 	type EmployeeData {
 		ingreso: Date!
 		imss: String!
 		qr: String!
+	}
+
+	type Request {
+		id: Int!
+		numEmp: String!
+		name: String!
+		type: String!
+		status: String!
+		start_date: Date!
+		end_date: Date
+		request_date: DateTime!
+		total_days: Int!
+		motive : String
+		comment: String
+		pre_approved_by: String
+		pre_approval_date: DateTime
+		approved_by: String
+		approval_date: DateTime
+		approver_comment: String
+		rejected_by: String
+		rejection_date: DateTime
+		cancelled_by: String
+		cancellation_date: DateTime
+	}
+
+	input RequestAbsenceInput {
+		numEmp: String! # ID employee
+		region: String! # Employee region
+		type: String! # Request type
+		start_date: Date! # Initial day date
+		end_date: Date # Last day date
+		days: Int! # Number of days
+		motive: Int # Permission motive
+		comment: String # Employee comment
+	}
+
+	input HandleAbsenceRequestInput {
+		numEmp: String! # ID employee
+		region: String! # Employee region
+		request_id: Int! # Request ID
+		action: String! # Request action
+		motive: Int # Motive id
+		comment: String # Superior comment
+	}
+
+	input GenerateVacationCertificateInput {
+		numEmp: String!
+		region: String!
+		signature: String!  # base64-encoded PNG
+	}
+
+	type GenerateVacationCertificateResponse {
+		success: Boolean!
+		message: String!
+		pdfUrl: String
+	}
+
+	type LoginStatus {
+		id: String!
+		status: String!
+		encrypted: Boolean!
+		nip: String
+	}
+
+	type ResponseComplaintData {
+		success: Boolean!
+		message: String!
+		data: ComplaintInfo!
+	}
+
+	type ComplaintInfo {
+		email: String!
+		phone: String!
+	}
+
+	type Notification {
+		id: ID!
+		title: String!
+		message: String!
+		created_at: DateTime!
+		files: [NotificationFile]
+	}
+
+	type NotificationFile {
+		id: ID!
+		file_name: String
+	}
+
+	type NotificationFileUrl {
+		success: Boolean!
+		message: String!
+		url: String
+	}
+
+	input HandleCheckInInput {
+		numEmp: String!
+		region: String!
+	}
+
+	type HandleCheckInResponse {
+		success: Boolean!
+		message: String!
+	}
+
+	input AssignSurveysInput {
+		numEmpList: [String!]!
+		region: String!
+		surveyId: Int!
+	}
+
+	type AssignSurveysResponse {
+		success: Boolean!
+		message: String!
 	}
 
 	type Query {
@@ -303,14 +456,21 @@ const typeDefs = gql`
 		Prestamo(numEmp: String!, region: String!): Prestamo!
 		Encuestas(numEmp: String!, region: String!): [Encuestas]
 		Encuesta(encuesta: Int!, region: String!): [Encuesta!]!
+		Policies(region: String!): Policies!
 		TestQuery: String
+		IsSupervisor(numEmp: String!, region: String!): Response!
+		SuperiorRequests(numEmp: String!, region: String!): ResponseRequests!
+		ComplaintInfo(region: String!): ResponseComplaintData!
+		Notifications: [Notification]
+		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
 	}
 
 	type Mutation {
-		login(numEmp: String!, nip: String!, region: String!): Token
-		resetNIP(numEmp: Int!, rfc: String!, newNIP: Int!): String!
+		login(numEmp: String!, nip: String!, region: String!): ResponseLogin!
+		mockLogin(numEmpList: [String!]!, region: String!): [LoginStatus!]!
+		resetNIP(numEmp: String!, rfc: String!, newNIP: String!, region: String!): String!
 		addFamilyMember(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			name: String!
 			kin: Int!
@@ -318,19 +478,19 @@ const typeDefs = gql`
 			birth: String!
 		): Boolean
 		removeFamilyMember(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			name: String!
 			date: String!
 		): Boolean
 		updateMeasurements(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			type: String!
 			size: String!
 		): Boolean
 		sendRequisition(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			name: String!
 			letter: String!
@@ -348,9 +508,11 @@ const typeDefs = gql`
 			start_date: String
 			end_date: String
 			days: Int
+			requested_loan: Float
+			loan_weeks: Int
 		): sendRequisition!
 		generatePayroll(
-			numEmp: Int!
+			numEmp: String!
 			region: String!
 			period: Int!
 			year: Int!
@@ -358,6 +520,11 @@ const typeDefs = gql`
 		submitSurvey(input: SubmitSurveyInput!): Response!
 		submitOpinion(input: OpinionInput!): Response!
 		requestQRData(input: QRInput!): ResponseData!
+		requestAbsence(input: RequestAbsenceInput!): Response!
+		handleAbsenceRequest(input: HandleAbsenceRequestInput!): Response!
+		generateVacationCertificate(input: GenerateVacationCertificateInput!): GenerateVacationCertificateResponse!
+		handleCheckIn(input: HandleCheckInInput!): HandleCheckInResponse!
+		assignSurveys(input: AssignSurveysInput!): AssignSurveysResponse!
 		testMutation: String
 	}
 `;

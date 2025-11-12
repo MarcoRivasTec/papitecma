@@ -14,6 +14,20 @@ const executeQuery = async (query, errorMessage, dbName) => {
 	}
 };
 
+const executeQueryNew = async (query, errorMessage, dbName) => {
+	try {
+		// console.log("Query is: ", query);
+		const pool = await poolPromises[dbName];
+		const result = await pool.request().query(query);
+		console.log(result);
+		return result.recordset[0];
+	} catch (err) {
+		console.error("Error during query execution: ", err);
+		return { success: false, message: errorMessage }
+		throw new Error(errorMessage);
+	}
+};
+
 const executeParameterizedQuery = async (
 	query,
 	params,
@@ -55,5 +69,6 @@ const executeParameterizedQuery = async (
 
 module.exports = {
 	executeQuery,
+	executeQueryNew,
 	executeParameterizedQuery,
 };

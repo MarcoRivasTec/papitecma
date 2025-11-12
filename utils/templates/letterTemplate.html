@@ -77,11 +77,18 @@
 							{{calle}} #{{num_ext}}, {{colonia}}, {{codigo_postal}}
 						</p>
 						<p style="font-size: 11pt; margin-top: 12pt">
-							{{ciudad}}, {{entidad}}, Mexico
+							{{ciudad}}, {{entidad}}, México
 						</p>
+						{{#if (notEq id_proyecto "H09")}}
 						<p style="margin-top: 10pt">
 							Tel:&nbsp;<strong>656 649 1000</strong>
 						</p>
+						{{/if}}
+						{{#if (eq id_proyecto "H75")}}
+						<p style="margin-top: 0pt">
+							Tel:&nbsp;<strong>656 619 7439</strong>
+						</p>
+						{{/if}}
 						<p style="font-size: 10pt; margin-top: 12pt">
 							RFC:&nbsp;<strong>{{rfc_razon}}</strong>
 						</p>
@@ -116,9 +123,9 @@
 							d&iacute;a&nbsp;<strong>{{antiguedad}}</strong>&nbsp;desempeñándose
 							como&nbsp;<strong>{{puesto}}</strong>&nbsp;en un horario de
 							<strong>{{jornada}}</strong> {{#if (orEquals tipo "CartaPrestamo"
-							"CartaVisa")}}con un ingreso mensual de <strong>${{salario_mensual}}
-							({{salario_mensual_letra}})</strong>{{else}}contando con un periodo
-							vacacional anual{{/if}}.
+							"CartaVisa")}}con un ingreso mensual de
+							<strong>${{salario_mensual}} ({{salario_mensual_letra}})</strong
+							>{{else}}contando con un periodo vacacional anual{{/if}}.
 						</p>
 						<p style="margin-top: 40pt">
 							RFC:&nbsp;<strong>{{rfc_emp}}</strong>
@@ -138,9 +145,6 @@
 						</p>
 						<p style="text-align: center; margin-top: 50pt">
 							<strong>____________________________</strong>
-						</p>
-						<p style="text-align: center">
-							<strong>{{nombre_rh}}</strong>
 						</p>
 						<p style="text-align: center">
 							<strong>Departamento de Recursos Humanos</strong>

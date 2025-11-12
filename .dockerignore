@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+Dockerfile
+ip_log.txt
+pdfs
+tecma_ip_log.txt
+wifi_ip_log.txt
+.dockerignore
+.env

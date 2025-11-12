@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Constancia de Vacaciones</title>
+		<style>
+			body {
+				font-family: Cambria, serif;
+				margin: 60px 50px 40px;
+				font-size: 12pt;
+				color: #000;
+			}
+
+			header {
+				text-align: right;
+				margin-bottom: 40px;
+			}
+
+			h1 {
+				text-align: center;
+				font-family: Calibri, sans-serif;
+				font-size: 16pt;
+				margin-bottom: 60px;
+				color: orange;
+				text-decoration: none;
+			}
+
+			.content p {
+				margin: 10pt 0;
+				text-align: justify;
+				line-height: 1.4;
+			}
+
+			.signature {
+				position: absolute;
+				bottom: 50px;
+				left: 0;
+				right: 0;
+				text-align: center;
+				margin-top: 20px;
+			}
+
+			.signature img {
+				margin-top: 0px;
+				width: 200px;
+				height: auto;
+			}
+
+			.footer {
+				text-align: center;
+				margin-top: 100px;
+			}
+
+			strong {
+				font-weight: bold;
+			}
+		</style>
+	</head>
+	<body>
+		<div style="position: absolute; top: 30px; left: 50px">
+			<img
+				src="data:image/png;base64,{{company_logo}}"
+				width="183"
+				height="52"
+				alt="Logo"
+			/>
+		</div>
+		<header>
+			<p>{{city}}, {{state}}, {{today}}</p>
+		</header>
+
+		<h1>CONSTANCIA DE VACACIONES</h1>
+
+		<div class="content">
+			<p><strong>{{full_name}}</strong></p>
+			<p><strong>PRESENTE.-</strong></p>
+
+			<p>
+				Por medio de la presente se hace constar que el(la) colaborador(a)
+				<strong>{{full_name}}</strong>, quien ocupa el puesto de
+				<strong>{{position}}</strong> en el departamento de
+				<strong>{{department}}</strong> y labora desde el día
+				<strong>{{seniority_date}}</strong> en esta empresa, tiene derecho a
+				disfrutar de su periodo vacacional correspondiente al año laboral
+				cumplido.
+			</p>
+
+			<p>
+				El periodo vacacional otorgado es de
+				<strong>{{days_granted}}</strong> días de acuerdo con una antigüedad de
+				<strong>{{seniority_years}}</strong> años, los cuales podrán ser
+				disfrutados entre los días <strong>{{start_vacation}}</strong> al
+				<strong>{{end_vacation}}</strong>, en común acuerdo con su jefe
+				inmediato y el departamento de Recursos Humanos.
+			</p>
+
+			<p>
+				Esta constancia se expide para los fines legales que al interesado
+				convengan, en cumplimiento del artículo 81 de la Ley Federal del
+				Trabajo.
+			</p>
+		</div>
+
+		<div class="footer">
+			<p><strong>Atentamente</strong></p>
+			<p>{{company_name}}</p>
+		</div>
+
+		<div class="signature">
+			<img src="data:image/png;base64,{{signature}}" alt="Firma" />
+			<p><strong>Firma del colaborador</strong></p>
+		</div>
+	</body>
+</html>
