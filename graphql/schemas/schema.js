@@ -417,6 +417,16 @@ const typeDefs = gql`
 		message: String!
 	}
 
+	type ResponseBadgeData {
+		success: Boolean!
+		message: String!
+		data: BadgeData!
+	}
+
+	type BadgeData {
+		format: String!
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -463,6 +473,7 @@ const typeDefs = gql`
 		ComplaintInfo(region: String!): ResponseComplaintData!
 		Notifications: [Notification]
 		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
+		BadgeData: ResponseBadgeData!
 	}
 
 	type Mutation {

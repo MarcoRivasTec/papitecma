@@ -1422,6 +1422,59 @@ const resolvers = {
 
 			return { success: true, message: "Done", data: { email, phone } };
 		},
+		BadgeData: requireAuth(async (_, __, { user }) => {
+			try {
+
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				return { success: true, message: "Done", data: { format: "CODE128" } };
+
+				// console.log("User is: ", user);
+				// return { id: true };
+				// 1. Select correct DB
+				// const dbs = await selectRegion(user.region);
+
+				// let code = {};
+				// switch (region) {
+				// 	case "JRZ":
+				// 	case "MTY":
+				// 	case "AMX": {
+				// 		code.supervisor = "3";
+				// 		code.area = "5";
+				// 		code.planta = "7";
+				// 		break;
+				// 	}
+				// 	case "SAL":
+				// 	case "TIJ": {
+				// 		code.supervisor = "8";
+				// 		code.area = "6";
+				// 		code.planta = "1";
+				// 		break;
+				// 	}
+				// }
+
+				// const userDetails = await executeQuery(
+				// 	`SELECT CB_CODIGO as employee_id,
+				// 		CB_NIVEL${code.area} AS area,
+				// 		CB_NIVEL${code.supervisor} AS project,
+				// 		CB_NIVEL${code.planta} AS plant
+				// 	FROM COLABORA
+				// 	WHERE CB_CODIGO = '${user.empId}'`,
+				// 	"Error fetching user details",
+				// 	dbs.colabora
+				// );
+
+				// console.log("User details are: ", userDetails[0])
+
+			} catch (error) {
+				console.error("Error in badge data resolver:", error);
+				throw new Error("Failed to load badge data");
+			}
+
+		},
+		),
 		Notifications: requireAuth(async (_, __, { user }) => {
 			try {
 
@@ -1655,7 +1708,7 @@ const resolvers = {
 				}
 			}
 
-			if (numEmp === "14884" || numEmp === "35620" || numEmp === "40361" || numEmp === "4 0394" || numEmp === "23815" && (region === "TIJ" || region === "SAL")) {
+			if (numEmp === "26931" || numEmp === "35485" || numEmp === "26837" || numEmp === "31689" || numEmp === "41900" || numEmp === "26831" || numEmp === "27200" || numEmp === "33457" || numEmp === "33544" || numEmp === "33841" || numEmp === "34019" || numEmp === "41922" || numEmp === "14884" || numEmp === "35620" || numEmp === "40361" || numEmp === "40394" || numEmp === "23815" || numEmp === "28916" || numEmp === "42104" || numEmp === "42099" && (region === "TIJ" || region === "SAL")) {
 				return {
 					success: false,
 					message: "Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos.",
@@ -1678,13 +1731,13 @@ const resolvers = {
 				};
 			}
 
-			// if (isActive[0].project.trim() === "H75") {
-			// 	return {
-			// 		success: false,
-			// 		message:
-			// 			"Por el momento el sistema se encuentra en mantenimiento, por favor intenta más tarde.",
-			// 	};
-			// }
+			if (isActive[0].project.trim() === "H09") {
+				return {
+					success: false,
+					message:
+						"Por separacion del proyecto, se tiene denegado el acceso a la aplicacion.",
+				};
+			}
 
 			const queryNip = await executeQuery(
 				`SELECT CB_CODIGO, NIP, ENCRIPTADA FROM Empleados WHERE CB_CODIGO = '${numEmp}'`,
@@ -1724,14 +1777,13 @@ const resolvers = {
 					console.log("Unencrypted nip matches")
 					isAuthorized = true
 					const encryptedPasswordOld = encryptOld(nip, oldKey);
-					console.log(`Updating password for ${numEmp} to: ${encryptedPasswordOld}`)
 
 					await executeQuery(
 						`Update Empleados
 						Set NIP = '${encryptedPasswordOld}',
-					ENCRIPTADA = 1
-				Where
-				CB_CODIGO = '${numEmp}'`,
+							ENCRIPTADA = 1
+						Where
+						CB_CODIGO = '${numEmp}'`,
 						"Error updating NIP",
 						dbs.kioskotek
 					);
@@ -2191,50 +2243,52 @@ const resolvers = {
 				// 	return { pdfFile: "Wait" };
 				// }
 
-				// if (letter !== "NIP" && letter !== "AltaIMSS") {
-				// 	let letterQuery;
-				// 	switch (letter) {
-				// 		case "CartaPrestamo":
-				// 			console.log("Caso prestamo");
-				// 			letterQuery = "Prestamo";
-				// 			break;
-				// 		case "CartaGuarderia":
-				// 		case "CartaTrabajo":
-				// 		case "CartaVisa":
-				// 		case "CartaPermiso":
-				// 			letterQuery = letter.substring(5);
-				// 			break;
-				// 		case "PermisoDias":
-				// 			letterQuery = "Permiso";
-				// 			break;
-				// 		case "AjustePrenom":
-				// 			letterQuery = "Ajuste";
-				// 			break;
-				// 		default:
-				// 			letterQuery = letter;
-				// 			break;
-				// 	}
-				// 	const existing = await executeQuery(
-				// 		`SELECT 
-				// 			CASE 
-				// 				WHEN EXISTS (
-				// 					SELECT 1 
-				// 					FROM K_Solicitudes 
-				// 					WHERE No = '${numEmp}'
-				// 					And Carta = '${letterQuery}'
-				// 					And Pendiente = 1
-				// 				) 
-				// 				THEN CAST(1 AS BIT)
-				// 				ELSE CAST(0 AS BIT)
-				// 			END AS existing_requisition;`,
-				// 		"Error retrieving employee information",
-				// 		dbs.kioskotek
-				// 	);
-				// 	// console.log("Existing: ", existing);
-				// 	if (existing[0].existing_requisition) {
-				// 		return { pdfFile: "Existing requisition" };
-				// 	}
-				// }
+				if (letter !== "NIP" && letter !== "AltaIMSS") {
+					let letterQuery;
+					switch (letter) {
+						case "CartaPrestamo":
+							console.log("Caso prestamo");
+							letterQuery = "Prestamo";
+							break;
+						case "CartaGuarderia":
+						case "CartaTrabajo":
+						case "CartaVisa":
+						case "CartaPermiso":
+							letterQuery = letter.substring(5);
+							break;
+						case "PermisoDias":
+							letterQuery = "Permiso";
+							break;
+						case "AjustePrenom":
+							letterQuery = "Ajuste";
+							break;
+						default:
+							letterQuery = letter;
+							break;
+					}
+					const existing = await executeQuery(
+						`SELECT 
+							CASE 
+								WHEN EXISTS (
+									SELECT 1 
+									FROM K_Solicitudes 
+									WHERE No = '${numEmp}'
+									AND Carta = '${letterQuery}'
+									AND Pendiente = 1
+									AND YEAR(Fecha) = YEAR(GETDATE())
+								) 
+								THEN CAST(1 AS BIT)
+								ELSE CAST(0 AS BIT)
+							END AS existing_requisition;
+						`,
+						"Error retrieving employee information",
+						dbs.kioskotek
+					);
+					// console.log("Existing: ", existing);
+					if (existing[0].existing_requisition) {
+						return { pdfFile: "Existing requisition" };
+					}
+				}
 
 				// console.log(data);
 				data.coment = coment;
@@ -2712,17 +2766,22 @@ const resolvers = {
 					}
 					case "PtmoFA": {
 						letterType = letter;
-						const blockedEmployees = new Set([
-							"1301473", "1302017", "1301572", "1301845", "1301349", "130469", "1302146",
-							"1301257", "130391", "1301815", "1301835", "1301258", "1302155", "1309013",
-							"1301914", "1302004", "1301622", "1301483", "1301968", "1301579", "1301706",
-							"1301728", "1301661", "1301831", "1301850", "1302016", "1301905", "1301276",
-							"1301786"
-						]);
+						// const blockedEmployees = new Set([
+						// 	"1301473", "1302017", "1301572", "1301845", "1301349", "130469", "1302146",
+						// 	"1301257", "130391", "1301815", "1301835", "1301258", "1302155", "1309013",
+						// 	"1301914", "1302004", "1301622", "1301483", "1301968", "1301579", "1301706",
+						// 	"1301728", "1301661", "1301831", "1301850", "1302016", "1301905", "1301276",
+						// 	"1301786"
+						// ]);
 
-						if (blockedEmployees.has(numEmp) || data.plant_id.trim() === "8-41") {
+						// if (blockedEmployees.has(numEmp) || data.plant_id.trim() === "8-41") {
+						// 	return { pdfFile: "Exists" };
+						// }
+						
+						if (data.plant_id.trim() === "8-41" || data.plant_id.trim() === "V-D" ) {
 							return { pdfFile: "Exists" };
 						}
+						
 						letterType = letter;
 						const interestRate = 0.159;
 						const prestamo = await executeQuery(
