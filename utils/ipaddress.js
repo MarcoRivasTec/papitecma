@@ -3,9 +3,12 @@ const fs = require("fs");
 
 const getLocalIp = async () => {
 	const interfaces = os.networkInterfaces();
+	// console.log("Network interfaces: ", interfaces);
 	for (const name of Object.keys(interfaces)) {
+		// console.log(`Checking interface: ${name}`);
 		for (const iface of interfaces[name]) {
-			if (iface.family === "IPv4" && !iface.internal) {
+			// console.log(`Interface: ${name}, Address: ${iface.address}, Family: ${iface.family}, Internal: ${iface.internal}`);
+			if (iface.family === "IPv4" && !iface.internal && !name.includes("vEthernet")) {
 				return iface.address;
 			}
 		}
