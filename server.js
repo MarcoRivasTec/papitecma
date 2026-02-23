@@ -19,7 +19,6 @@ function getUserFromAuthHeader(req) {
 	const auth = req.headers.authorization || "";
 	const [scheme, token] = auth.split(" ");
 
-
 	if ((scheme || "").toLowerCase() !== "bearer" || !token) return null;
 
 	try {
@@ -53,6 +52,7 @@ let host;
 let homeHost = false;
 let tecmaHost = false;
 let localNetHost = false;
+const specificEndpoint = "";
 
 const getHosts = async () => {
 	if (process.env.HOST === "PRODUCTION") {
@@ -61,8 +61,13 @@ const getHosts = async () => {
 		console.log("Host will be: ", host);
 	} else if (process.env.HOST === "DEV") {
 		console.log("Host mode set to DEV");
-		const { getLocalIp, getWiFiIPAddressHost, getTecmaVPNIPAddressHost } = require("./utils/ipaddress");
-		localNetHost = await getLocalIp();
+		const {
+			getLocalIp,
+			getWiFiIPAddressHost,
+			getTecmaVPNIPAddressHost,
+		} = require("./utils/ipaddress");
+		localNetHost =
+			specificEndpoint === "" ? await getLocalIp() : specificEndpoint;
 		console.log("Local IP Address: ", localNetHost);
 		homeHost = await getWiFiIPAddressHost();
 		console.log("WiFi IP Address: ", homeHost);
@@ -103,7 +108,7 @@ app.use((req, res, next) => {
 	res.header("Access-Control-Allow-Origin", "*");
 	res.header(
 		"Access-Control-Allow-Headers",
-		"Origin, X-Requested-With, Content-Type, Accept, Authorization"
+		"Origin, X-Requested-With, Content-Type, Accept, Authorization",
 	);
 	if (req.method === "OPTIONS") {
 		res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
@@ -126,7 +131,11 @@ app.get("/vacation-certificates/:fileName", (req, res) => {
 		return res.status(400).send("Invalid file name.");
 	}
 
-	const filePath = path.resolve(__dirname, "../public/vacation-certificates", fileName);
+	const filePath = path.resolve(
+		__dirname,
+		"../public/vacation-certificates",
+		fileName,
+	);
 
 	if (!fs.existsSync(filePath)) {
 		return res.status(404).send("File not found.");
@@ -142,7 +151,7 @@ const NOTIF_DIR = path.resolve(__dirname, "./public/notifications");
 
 app.get("/download/notification", (req, res) => {
 	const { token } = req.query;
-	console.log("Token is: ", token)
+	console.log("Token is: ", token);
 	if (!token) return res.status(400).send("Missing token");
 
 	try {
@@ -158,7 +167,10 @@ app.get("/download/notification", (req, res) => {
 		if (!fs.existsSync(filePath)) return res.status(404).send("File not found");
 
 		res.setHeader("Cache-Control", "no-store, max-age=0");
-		res.setHeader("Content-Disposition", `attachment; filename="${payload.file}"`);
+		res.setHeader(
+			"Content-Disposition",
+			`attachment; filename="${payload.file}"`,
+		);
 		return res.sendFile(filePath);
 	} catch {
 		return res.status(401).send("Link expired or invalid");
@@ -171,13 +183,13 @@ const apolloServer = new ApolloServer({
 	resolvers,
 	playground: false,
 	plugins: [
-		...(process.env.HOST === "PRODUCTION"
+		...(process.env.HOST === "DEV"
 			? [ApolloServerPluginLandingPageDisabled()]
 			: []),
 	],
 	context: async ({ req }) => {
 		// const pools = await Promise.all(Object.values(poolPromises));
-		const pools = {}
+		const pools = {};
 		return { pools, user: req.user };
 	},
 });
@@ -192,45 +204,47 @@ apolloServer.start().then(() => {
 		console.log("\n\nServer starting in development mode");
 		apolloServer.applyMiddleware({ app, path: `/papitecma` });
 
-		app.listen(testPort, () => {
-			console.log(
-				`Server running at http://localhost:${testPort}${apolloServer.graphqlPath}`
-			);
+		app.listen(testPort, "0.0.0.0", () => {
+			console.log(`Server running at:`);
+			console.log(`http://localhost:${testPort}${apolloServer.graphqlPath}`);
+			console.log(`http://192.168.1.95:${testPort}${apolloServer.graphqlPath}`);
 		});
 
-		if (localNetHost !== false) {
-			app.listen(testPort, localNetHost, () => {
-				console.log(
-					`\nServer running at http://${localNetHost}:${testPort}${apolloServer.graphqlPath}`
-				);
-			});
-		}
+		// app.listen(testPort, () => {
+		// 	console.log(
+		// 		`Server running at http://localhost:${testPort}${apolloServer.graphqlPath}`
+		// 	);
+		// });
 
-		if (homeHost !== false) {
-			app.listen(testPort, homeHost, () => {
-				console.log(
-					`\nServer running at http://${homeHost}:${testPort}${apolloServer.graphqlPath}`
-				);
-			});
-		}
-		if (tecmaHost !== false) {
-			app.listen(testPort, tecmaHost, () => {
-				console.log(
-					`\nServer running at http://${tecmaHost}:${testPort}${apolloServer.graphqlPath}`
-				);
-			});
-		}
+		// if (localNetHost !== false) {
+		// 	app.listen(testPort, localNetHost, () => {
+		// 		console.log(
+		// 			`\nLocal net host server running at http://${localNetHost}:${testPort}${apolloServer.graphqlPath}`
+		// 		);
+		// 	});
+		// }
+
+		// if (homeHost !== false) {
+		// 	app.listen(testPort, homeHost, () => {
+		// 		console.log(
+		// 			`\nHome host server running at http://${homeHost}:${testPort}${apolloServer.graphqlPath}`
+		// 		);
+		// 	});
+		// }
+		// if (tecmaHost !== false) {
+		// 	app.listen(testPort, tecmaHost, () => {
+		// 		console.log(
+		// 			`\nTecma host server running at http://${tecmaHost}:${testPort}${apolloServer.graphqlPath}`
+		// 		);
+		// 	});
+		// }
 	} else if (process.env.HOST === "PRODUCTION") {
 		console.log(`QL applied to: "/"`);
 		apolloServer.applyMiddleware({ app, path: `/` });
 		console.log("Server starting in production mode");
 		http.createServer(app).listen(internalPort, () => {
-			console.log(
-				`\nUsing port: ${internalPort}`
-			);
-			console.log(
-				`\nServer running on and http://api.tecmamovilconnect.com/`
-			);
+			console.log(`\nUsing port: ${internalPort}`);
+			console.log(`\nServer running on and http://api.tecmamovilconnect.com/`);
 		});
 	} else {
 		console.log(`Error starting server, no host mode recognized`);

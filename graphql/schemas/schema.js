@@ -417,6 +417,20 @@ const typeDefs = gql`
 		message: String!
 	}
 
+	type ResponseLoanData {
+		success: Boolean! 
+		message: String! 
+		data: LoanData
+	}
+
+	type LoanData {
+		saldo_fa: Float!
+		prestamo: Boolean!
+		initial_week: Int!
+		final_week: Int!
+		max_weeks: Int!
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -463,6 +477,7 @@ const typeDefs = gql`
 		ComplaintInfo(region: String!): ResponseComplaintData!
 		Notifications: [Notification]
 		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
+		LoanData: ResponseLoanData!
 	}
 
 	type Mutation {
@@ -525,6 +540,7 @@ const typeDefs = gql`
 		generateVacationCertificate(input: GenerateVacationCertificateInput!): GenerateVacationCertificateResponse!
 		handleCheckIn(input: HandleCheckInInput!): HandleCheckInResponse!
 		assignSurveys(input: AssignSurveysInput!): AssignSurveysResponse!
+		requestLoan(example: Int!): Response!
 		testMutation: String
 	}
 `;
