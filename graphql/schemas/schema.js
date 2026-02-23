@@ -417,14 +417,18 @@ const typeDefs = gql`
 		message: String!
 	}
 
-	type ResponseBadgeData {
-		success: Boolean!
-		message: String!
-		data: BadgeData!
+	type ResponseLoanData {
+		success: Boolean! 
+		message: String! 
+		data: LoanData
 	}
 
-	type BadgeData {
-		format: String!
+	type LoanData {
+		saldo_fa: Float!
+		prestamo: Boolean!
+		initial_week: Int!
+		final_week: Int!
+		max_weeks: Int!
 	}
 
 	type Query {
@@ -473,7 +477,7 @@ const typeDefs = gql`
 		ComplaintInfo(region: String!): ResponseComplaintData!
 		Notifications: [Notification]
 		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
-		BadgeData: ResponseBadgeData!
+		LoanData: ResponseLoanData!
 	}
 
 	type Mutation {
@@ -536,6 +540,7 @@ const typeDefs = gql`
 		generateVacationCertificate(input: GenerateVacationCertificateInput!): GenerateVacationCertificateResponse!
 		handleCheckIn(input: HandleCheckInInput!): HandleCheckInResponse!
 		assignSurveys(input: AssignSurveysInput!): AssignSurveysResponse!
+		requestLoan(example: Int!): Response!
 		testMutation: String
 	}
 `;
