@@ -204,25 +204,25 @@ apolloServer.start().then(() => {
 		console.log("\n\nServer starting in development mode");
 		apolloServer.applyMiddleware({ app, path: `/papitecma` });
 
-		app.listen(testPort, "0.0.0.0", () => {
-			console.log(`Server running at:`);
-			console.log(`http://localhost:${testPort}${apolloServer.graphqlPath}`);
-			console.log(`http://192.168.1.95:${testPort}${apolloServer.graphqlPath}`);
-		});
-
-		// app.listen(testPort, () => {
-		// 	console.log(
-		// 		`Server running at http://localhost:${testPort}${apolloServer.graphqlPath}`
-		// 	);
+		// app.listen(testPort, "0.0.0.0", () => {
+		// 	console.log(`Server running at:`);
+		// 	console.log(`http://localhost:${testPort}${apolloServer.graphqlPath}`);
+		// 	console.log(`http://192.168.1.95:${testPort}${apolloServer.graphqlPath}`);
 		// });
 
-		// if (localNetHost !== false) {
-		// 	app.listen(testPort, localNetHost, () => {
-		// 		console.log(
-		// 			`\nLocal net host server running at http://${localNetHost}:${testPort}${apolloServer.graphqlPath}`
-		// 		);
-		// 	});
-		// }
+		app.listen(testPort, () => {
+			console.log(
+				`Server running at http://localhost:${testPort}${apolloServer.graphqlPath}`
+			);
+		});
+
+		if (localNetHost !== false) {
+			app.listen(testPort, localNetHost, () => {
+				console.log(
+					`\nLocal net host server running at http://${localNetHost}:${testPort}${apolloServer.graphqlPath}`
+				);
+			});
+		}
 
 		// if (homeHost !== false) {
 		// 	app.listen(testPort, homeHost, () => {
