@@ -1635,201 +1635,390 @@ const resolvers = {
 				};
 			},
 		),
+		// LoanData: requireAuth(async (_, __, { user }) => {
+		// 	try {
+		// 		console.log("LoanData resolver called with user: ", user);
+		// 		if (!user) throw new Error("Unauthorized");
+
+		// 		const { empId, region } = user;
+
+		// 		console.log("User is: ", user);
+		// 		// return { id: true };
+		// 		// 1. Select correct DB
+		// 		const dbs = await selectRegion(user.region);
+
+		// 		let code = {};
+		// 		switch (region) {
+		// 			case "JRZ":
+		// 			case "MTY":
+		// 			case "AMX": {
+		// 				code.supervisor = "3";
+		// 				code.area = "5";
+		// 				code.planta = "7";
+		// 				break;
+		// 			}
+		// 			case "SAL":
+		// 			case "TIJ": {
+		// 				code.supervisor = "8";
+		// 				code.area = "6";
+		// 				code.planta = "1";
+		// 				break;
+		// 			}
+		// 		}
+
+		// 		// CB_NIVEL${code.area} AS area_code,
+		// 		const userDetails = await executeQuery(
+		// 			`SELECT CB_CODIGO as employee_id,
+		// 				CB_NIVEL${code.supervisor} AS project_code,
+		// 				CB_NIVEL${code.planta} AS plant_code,
+		// 				CB_CLASIFIC AS classification
+		// 			FROM COLABORA
+		// 			WHERE CB_CODIGO = '${user.empId}'`,
+		// 			"Error fetching user details",
+		// 			dbs.colabora,
+		// 		);
+
+		// 		const prestamo = await executeQuery(
+		// 			`Declare @CurrentYear INT = YEAR(GETDATE());
+		// 		Declare @Exists NVARCHAR(5);
+
+		// 		Set @Exists = (
+		// 			Select Case
+		// 				When Exists (
+		// 					Select 1
+		// 					From PRESTAMO
+		// 					Where YEAR(PR_FECHA) = @CurrentYear
+		// 					And CB_CODIGO = ${empId}
+		// 					And PR_TIPO = '4'
+		// 				) Then 'true'
+		// 				Else 'false'
+		// 			End
+		// 		);
+
+		// 		Select
+		// 			SUM(AH.AH_SALDO) * 2 As SaldoFA,
+		// 			@Exists As PrestamoExists
+
+		// 			From AHORRO As AH
+		// 				Where AH.CB_CODIGO = ${empId}
+		// 				And AH.AH_TIPO = '2'
+		// 				And AH.AH_STATUS = 0
+		// 				And AH.AH_FECHA = (SELECT MAX(AH_FECHA)
+		// 									FROM Ahorro
+		// 									WHERE CB_CODIGO = '${empId}'
+		// 										AND AH_STATUS = 0
+		// 										AND AH_TIPO = '2');`,
+		// 			"Error fetching balance and existing loan",
+		// 			dbs.colabora,
+		// 		);
+
+		// 		// const prestamoKiosko = await executeQuery(
+		// 		// 	`Declare @CurrentYear INT = YEAR(GETDATE());
+		// 		// 	Declare @Exists NVARCHAR(5);
+
+		// 		// 	Set @Exists = (
+		// 		// 		Select Case
+		// 		// 			When Exists (
+		// 		// 				Select 1
+		// 		// 				From K_Solicitudes
+		// 		// 				Where YEAR(Fecha) = @CurrentYear
+		// 		// 				And No = ${numEmp}
+		// 		// 			) Then 'true'
+		// 		// 			Else 'false'
+		// 		// 		End
+		// 		// 	);
+
+		// 		// 	Select
+		// 		// 		@Exists As prestamoExists`,
+		// 		// 	"Error fetching existing loan k",
+		// 		// 	dbs.kioskotek
+		// 		// );
+
+		// 		const prestamo_weeks = await executeQuery(
+		// 			`SELECT TOP 1
+		// 			semana_inicial AS initial_week,
+		// 			semana_final AS final_week
+		// 		FROM Prestamos
+		// 		ORDER BY fecha DESC;`,
+		// 			"Error fetching prestamo weeks information",
+		// 			dbs.tecmamovil,
+		// 		);
+
+		// 		const now = DateTime.now().setZone("America/Denver");
+
+		// 		function calculateMaxWeeks() {
+		// 			const initial_week = 6; // Fixed throughout the year
+		// 			const final_week = 41; // End of loan period
+
+		// 			// Get the current date/time in America/Denver timezone
+		// 			const now = DateTime.now().setZone("America/Denver");
+
+		// 			console.log("Now's date is: ", now.toISO());
+
+		// 			function getFirstSaturdayOfYear(year, zone = "America/Denver") {
+		// 				// Start from January 1st
+		// 				let first_day = DateTime.fromObject(
+		// 					{ year, month: 1, day: 1 },
+		// 					{ zone },
+		// 				);
+
+		// 				// Find the first Saturday
+		// 				while (first_day.weekday !== 6) {
+		// 					first_day = first_day.plus({ days: 1 });
+		// 				}
+
+		// 				return first_day.startOf("day");
+		// 			}
+
+		// 			const first_saturday = getFirstSaturdayOfYear(now.year);
+		// 			console.log("First Saturday of the Year: ", first_saturday.toISO());
+
+		// 			// Find the start of week 6 (loan period start) — Adjust to start at week 6
+		// 			const loan_start = first_saturday.plus({ weeks: initial_week - 1 });
+		// 			console.log("Loan Start (Start of Week 6): ", loan_start.toISO());
+
+		// 			// Calculate the current week based on Saturdays
+		// 			let current_week =
+		// 				Math.floor(now.diff(loan_start, "weeks").weeks) + initial_week;
+
+		// 			// Correct for boundary cases (ensure week shifts on Saturday)
+		// 			const current_saturday = now.startOf("week").plus({ days: 6 }); // This week's Saturday
+		// 			if (now < current_saturday) {
+		// 				current_week -= 1;
+		// 			}
+
+		// 			console.log("Current Week: ", current_week);
+
+		// 			// Ensure current_week doesn't exceed final_week
+		// 			if (current_week > final_week) {
+		// 				current_week = final_week;
+		// 			}
+
+		// 			// Calculate max weeks
+		// 			const max_weeks = final_week - current_week + 1;
+
+		// 			return max_weeks;
+		// 		}
+
+		// 		// Example usage
+		// 		console.log("Max Weeks:", calculateMaxWeeks());
+
+		// 		console.log("Returning loan data: ", {
+		// 			saldo_fa: returnZero(prestamo[0].SaldoFA),
+		// 			prestamo: prestamo[0].PrestamoExists === "true" ? true : false,
+		// 			initial_week: prestamo_weeks[0].initial_week,
+		// 			final_week: prestamo_weeks[0].final_week,
+		// 			max_weeks: calculateMaxWeeks(),
+		// 		});
+
+		// 		const data = {
+		// 			saldo_fa: returnZero(prestamo[0].SaldoFA),
+		// 			prestamo: prestamo[0].PrestamoExists === "true" ? true : false,
+		// 			initial_week: prestamo_weeks[0].initial_week,
+		// 			final_week: prestamo_weeks[0].final_week,
+		// 			max_weeks: calculateMaxWeeks(),
+		// 		}
+
+		// 		return {
+		// 			success: true,
+		// 			message: `${prestamo[0].PrestamoExists === "true" ? "" : "El empleado no tiene préstamo activo"}`,
+		// 			data
+		// 		};
+		// 	} catch (error) {
+		// 		console.log("Error in LoanData resolver for user: ", user, " Error: ", error);
+		// 		return {
+		// 			success: false,
+		// 			message: "Ocurrió un error al obtener la información de préstamo"
+		// 		}
+		// 		throw new Error("Failed to load notifications");
+		// 	}
+		// }),
 		LoanData: requireAuth(async (_, __, { user }) => {
 			try {
-				console.log("LoanData resolver called");
 				if (!user) throw new Error("Unauthorized");
 
 				const { empId, region } = user;
 
-				console.log("User is: ", user);
-				// return { id: true };
-				// 1. Select correct DB
-				const dbs = await selectRegion(user.region);
+				const BUSINESS_TZ = "America/Denver";
+				const now = DateTime.now().setZone(BUSINESS_TZ);
 
-				let code = {};
-				switch (region) {
-					case "JRZ":
-					case "MTY":
-					case "AMX": {
-						code.supervisor = "3";
-						code.area = "5";
-						code.planta = "7";
-						break;
-					}
-					case "SAL":
-					case "TIJ": {
-						code.supervisor = "8";
-						code.area = "6";
-						code.planta = "1";
-						break;
-					}
-				}
+				const dbs = await selectRegion(region);
 
-				const userDetails = await executeQuery(
-					`SELECT CB_CODIGO as employee_id,
-						CB_NIVEL${code.area} AS area,
-						CB_NIVEL${code.supervisor} AS project,
-						CB_NIVEL${code.planta} AS plant
+				// 1️⃣ Fetch employee details
+				const userDetails = await executeParameterizedQuery(
+					`
+					SELECT 
+						CB_CODIGO AS employee_id,
+						CB_CLASIFI AS classification
 					FROM COLABORA
-					WHERE CB_CODIGO = '${user.empId}'`,
+					WHERE CB_CODIGO = @param1
+					`,
+					[empId],
 					"Error fetching user details",
 					dbs.colabora,
 				);
 
-				const prestamo = await executeQuery(
-					`Declare @CurrentYear INT = YEAR(GETDATE());
-				Declare @Exists NVARCHAR(5);
+				console.log("User details are: ", userDetails[0]);
 
-				Set @Exists = (
-					Select Case 
-						When Exists (
-							Select 1
-							From PRESTAMO
-							Where YEAR(PR_FECHA) = @CurrentYear
-							And CB_CODIGO = ${empId}
-							And PR_TIPO = '4'
-						) Then 'true'
-						Else 'false'
-					End
-				);
+				if (!userDetails || userDetails.length === 0) {
+					return {
+						success: false,
+						message: "Empleado no encontrado.",
+					};
+				}
 
-				Select 
-					SUM(AH.AH_SALDO) * 2 As SaldoFA,
-					@Exists As PrestamoExists
-
-					From AHORRO As AH
-						Where AH.CB_CODIGO = ${empId}
-						And AH.AH_TIPO = '2' 
-						And AH.AH_STATUS = 0
-						And AH.AH_FECHA = (SELECT MAX(AH_FECHA) 
-											FROM Ahorro 
-											WHERE CB_CODIGO = '${empId}' 
-												AND AH_STATUS = 0 
-												AND AH_TIPO = '2');`,
-					"Error fetching balance and existing loan",
+				// 2️⃣ Fetch savings balance
+				const balanceResult = await executeParameterizedQuery(
+					`
+					SELECT 
+						SUM(AH.AH_SALDO) * 2 AS SaldoFA
+					FROM AHORRO AS AH
+					WHERE AH.CB_CODIGO = @param1
+						AND AH.AH_TIPO = '2'
+						AND AH.AH_STATUS = 0
+						AND AH.AH_FECHA = (
+						SELECT MAX(AH_FECHA)
+						FROM AHORRO
+						WHERE CB_CODIGO = @param1
+							AND AH_STATUS = 0
+							AND AH_TIPO = '2'
+						)
+					`,
+					[empId],
+					"Error fetching balance",
 					dbs.colabora,
 				);
 
-				// const prestamoKiosko = await executeQuery(
-				// 	`Declare @CurrentYear INT = YEAR(GETDATE());
-				// 	Declare @Exists NVARCHAR(5);
+				console.log("Balance result: ", balanceResult[0]);
 
-				// 	Set @Exists = (
-				// 		Select Case
-				// 			When Exists (
-				// 				Select 1
-				// 				From K_Solicitudes
-				// 				Where YEAR(Fecha) = @CurrentYear
-				// 				And No = ${numEmp}
-				// 			) Then 'true'
-				// 			Else 'false'
-				// 		End
-				// 	);
+				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
 
-				// 	Select
-				// 		@Exists As prestamoExists`,
-				// 	"Error fetching existing loan k",
-				// 	dbs.kioskotek
-				// );
-
-				const prestamo_weeks = await executeQuery(
-					`SELECT TOP 1 
-					semana_inicial AS initial_week,
-					semana_final AS final_week
-				FROM Prestamos
-				ORDER BY fecha DESC;`,
-					"Error fetching prestamo weeks information",
+				// 3️⃣ Check existing loan in NEW Loans table
+				const existingLoan = await executeParameterizedQuery(
+					`
+					SELECT TOP 1 loan_id
+					FROM Loans
+					WHERE employee_id = @param1
+						AND YEAR(requested_at) = YEAR(GETDATE())
+						AND status IN ('Pending','Approved','Active')
+					`,
+					[empId],
+					"Error checking existing loan",
 					dbs.tecmamovil,
 				);
 
-				const now = DateTime.now().setZone("America/Denver");
+				console.log("Existing loan check result: ", existingLoan);
 
-				function calculateMaxWeeks() {
-					const initial_week = 6; // Fixed throughout the year
-					const final_week = 41; // End of loan period
+				const existingLoanStatus = existingLoan.length > 0;
 
-					// Get the current date/time in America/Denver timezone
-					const now = DateTime.now().setZone("America/Denver");
+				// 4️⃣ Fetch loan cycle config
+				const cycleResult = await executeParameterizedQuery(
+					`
+					SELECT TOP 1 
+						semana_inicial,
+						semana_final
+					FROM Prestamos
+					ORDER BY fecha DESC
+					`,
+					[],
+					"Error fetching loan cycle",
+					dbs.tecmamovil,
+				);
 
-					console.log("Now's date is: ", now.toISO());
+				console.log("Loan cycle config: ", cycleResult[0]);
 
-					function getFirstSaturdayOfYear(year, zone = "America/Denver") {
-						// Start from January 1st
-						let first_day = DateTime.fromObject(
-							{ year, month: 1, day: 1 },
-							{ zone },
-						);
+				const initialWeek = cycleResult[0]?.semana_inicial;
+				const finalWeek = cycleResult[0]?.semana_final;
 
-						// Find the first Saturday
-						while (first_day.weekday !== 6) {
-							first_day = first_day.plus({ days: 1 });
-						}
-
-						return first_day.startOf("day");
+				function getFirstSaturday(year) {
+					let first = DateTime.fromObject(
+						{ year, month: 1, day: 1 },
+						{ zone: BUSINESS_TZ },
+					);
+					while (first.weekday !== 6) {
+						first = first.plus({ days: 1 });
 					}
-
-					const first_saturday = getFirstSaturdayOfYear(now.year);
-					console.log("First Saturday of the Year: ", first_saturday.toISO());
-
-					// Find the start of week 6 (loan period start) — Adjust to start at week 6
-					const loan_start = first_saturday.plus({ weeks: initial_week - 1 });
-					console.log("Loan Start (Start of Week 6): ", loan_start.toISO());
-
-					// Calculate the current week based on Saturdays
-					let current_week =
-						Math.floor(now.diff(loan_start, "weeks").weeks) + initial_week;
-
-					// Correct for boundary cases (ensure week shifts on Saturday)
-					const current_saturday = now.startOf("week").plus({ days: 6 }); // This week's Saturday
-					if (now < current_saturday) {
-						current_week -= 1;
-					}
-
-					console.log("Current Week: ", current_week);
-
-					// Ensure current_week doesn't exceed final_week
-					if (current_week > final_week) {
-						current_week = final_week;
-					}
-
-					// Calculate max weeks
-					const max_weeks = final_week - current_week + 1;
-
-					return max_weeks;
+					return first.startOf("day");
 				}
 
-				// Example usage
-				console.log("Max Weeks:", calculateMaxWeeks());
+				const firstSaturday = getFirstSaturday(now.year);
+				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
+				const loanEnd = firstSaturday
+					.plus({ weeks: finalWeek - 1 })
+					.endOf("week");
 
-				console.log("Returning loan data: ", {
-					saldo_fa: returnZero(prestamo[0].SaldoFA),
-					prestamo: prestamo[0].PrestamoExists === "true" ? true : false,
-					initial_week: prestamo_weeks[0].initial_week,
-					final_week: prestamo_weeks[0].final_week,
-					max_weeks: calculateMaxWeeks(),
+				let isAllowed = true;
+				let reason = null;
+				let maxWeeks = 0;
+
+				if (existingLoanStatus) {
+					isAllowed = false;
+					reason = "Ya existe un préstamo activo en este año.";
+				}
+
+				if (now < loanStart || now > loanEnd) {
+					isAllowed = false;
+					reason =
+						"No se encuentra dentro del periodo permitido para préstamos.";
+				}
+
+				if (isAllowed) {
+					const currentWeek =
+						Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
+
+					maxWeeks = finalWeek - currentWeek + 1;
+
+					if (maxWeeks < 2) {
+						isAllowed = false;
+						reason = "El periodo restante no permite un mínimo de 2 semanas.";
+					}
+				}
+
+				const interestRate = 15.9; // Replace later with config table
+
+				const minAmount = parseFloat((balance * 0.1).toFixed(2));
+				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
+
+				console.log("Loan eligibility data: ", {
+					isAllowed,
+					reason,
+					balance,
+					minAmount,
+					maxAmount,
+					maxWeeks,
+					interestRate,
+					existingLoanStatus,
+					loanStart: loanStart.toISO(),
+					loanEnd: loanEnd.toISO(),
+					now: now.toISO(),
 				});
-
-				const data = {
-					saldo_fa: returnZero(prestamo[0].SaldoFA),
-					prestamo: prestamo[0].PrestamoExists === "true" ? true : false,
-					initial_week: prestamo_weeks[0].initial_week,
-					final_week: prestamo_weeks[0].final_week,
-					max_weeks: calculateMaxWeeks(),
-				}
 
 				return {
 					success: true,
-					message: `${prestamo[0].PrestamoExists === "true" ? "" : "El empleado no tiene préstamo activo"}`,
-					data
+					message: "Información de préstamo obtenida exitosamente.",
+					data: {
+						isAllowed,
+						reason,
+						balance,
+						minAmount,
+						maxAmount,
+						maxWeeks: isAllowed ? maxWeeks : 0,
+						interestRate,
+						existingLoanStatus,
+						cycle: {
+							startDate: loanStart.toISO(),
+							endDate: loanEnd.toISO(),
+						},
+						serverNow: now.toISO(),
+					},
 				};
 			} catch (error) {
-				console.log("Error in LoanData resolver for user: ", user, " Error: ", error);
+				console.error("LoanData resolver error:", error);
+
 				return {
 					success: false,
-					message: "Ocurrió un error al obtener la información de préstamo"
-				}
-				throw new Error("Failed to load notifications");
+					message: "Hubo un error al obtener la información del préstamo.",
+				};
 			}
 		}),
 	},
@@ -4491,79 +4680,230 @@ const resolvers = {
 				};
 			}
 		},
-		requestLoan: requireAuth(async (_, { example }, { user }) => {
+		// requestLoan: requireAuth(async (_, { input }, { user }) => {
+		// 	if (!user) throw new Error("Unauthorized");
+
+		// 	const { empId, region } = user;
+		// 	console.log("User info from context: ", user, "Input: ", input);
+
+		// 	// 1) Select correct DBs for this region
+		// 	const dbs = await selectRegion(region);
+
+		// 	// 2) Map NIVEL indices based on region (same logic you use in Notifications)
+		// 	let code = {};
+		// 	switch (region) {
+		// 		case "JRZ":
+		// 		case "MTY":
+		// 		case "AMX":
+		// 			code.supervisor = "3";
+		// 			code.area = "5";
+		// 			code.planta = "7";
+		// 			break;
+		// 		case "SAL":
+		// 		case "TIJ":
+		// 			code.supervisor = "8";
+		// 			code.area = "6";
+		// 			code.planta = "1";
+		// 			break;
+		// 		default:
+		// 			throw new Error(`Unsupported region: ${region}`);
+		// 	}
+
+		// 	// 3) Get user details (area/project/plant)
+		// 	const userDetails = await executeQuery(
+		// 		`SELECT CB_CODIGO as employee_id,
+		// 				CB_NIVEL${code.area}       AS area,
+		// 				CB_NIVEL${code.supervisor} AS project,
+		// 				CB_NIVEL${code.planta}     AS plant
+		// 		FROM COLABORA
+		// 		WHERE CB_CODIGO = '${empId}'`,
+		// 		"Error fetching user details",
+		// 		dbs.colabora,
+		// 	);
+
+		// 	if (!userDetails?.length)
+		// 		throw new Error("Employee not found for region");
+
+		// 	const area = String(userDetails[0].area || "").trim();
+		// 	const project = String(userDetails[0].project || "").trim();
+		// 	const plant = String(userDetails[0].plant || "").trim();
+
+		// 	// if (!fileRow?.length)
+		// 	// 	throw new Error("File not found for this notification");
+
+		// 	// const fileName = fileRow[0].file_name;
+		// 	// // basic allowlist to avoid traversal
+		// 	// if (!/^[a-zA-Z0-9._-]+$/.test(fileName))
+		// 	// 	throw new Error("Invalid filename");
+
+		// 	// // 6) Sign a short-lived (2 min) download token
+		// 	// const token = jwt.sign(
+		// 	// 	{ typ: "download", file: fileName, empId, region },
+		// 	// 	notifKey,
+		// 	// 	{ expiresIn: "2m" },
+		// 	// );
+
+		// 	// 7) Build absolute URL to your download route
+		// 	const base =
+		// 		process.env.HOST === "PRODUCTION"
+		// 			? "https://api.tecmamovilconnect.com"
+		// 			: "https://dev-api.tecmamovilconnect.com";
+
+		// 	return {
+		// 		success: true,
+		// 		message: `Success in call for ${empId} in region ${region} with example input ${example}`,
+		// 		// url: `${base}/download/notification?token=${encodeURIComponent(token)}`,
+		// 	};
+		// }),
+		requestLoan: requireAuth(async (_, { input }, { user }) => {
+			const { amount, weeks } = input;
+
 			if (!user) throw new Error("Unauthorized");
 
-			const { empId, region } = user;
+			const { empId, region, name } = user;
 
-			// 1) Select correct DBs for this region
 			const dbs = await selectRegion(region);
+			const pool = await poolPromises[dbs.tecmamovil];
 
-			// 2) Map NIVEL indices based on region (same logic you use in Notifications)
-			let code = {};
-			switch (region) {
-				case "JRZ":
-				case "MTY":
-				case "AMX":
-					code.supervisor = "3";
-					code.area = "5";
-					code.planta = "7";
-					break;
-				case "SAL":
-				case "TIJ":
-					code.supervisor = "8";
-					code.area = "6";
-					code.planta = "1";
-					break;
-				default:
-					throw new Error(`Unsupported region: ${region}`);
+			const transaction = new sql.Transaction(pool);
+
+			try {
+				await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+
+				// 1️⃣ Recheck existing loan inside transaction
+				const existingLoan = await executeParameterizedQueryTx(
+					`
+      SELECT loan_id
+      FROM Loans WITH (UPDLOCK, HOLDLOCK)
+      WHERE employee_id = @param1
+        AND YEAR(requested_at) = YEAR(GETDATE())
+        AND status IN ('Pending','Approved','Active')
+      `,
+					[empId],
+					"Error checking existing loan",
+					transaction,
+				);
+
+				if (existingLoan.length > 0) {
+					await transaction.rollback();
+
+					return {
+						success: false,
+						message: "Ya existe un préstamo activo en este año.",
+					};
+				}
+
+				// 2️⃣ Re-fetch balance safely
+				const balanceResult = await executeParameterizedQueryTx(
+					`
+      SELECT 
+        SUM(AH.AH_SALDO) * 2 AS SaldoFA
+      FROM AHORRO AS AH
+      WHERE AH.CB_CODIGO = @param1
+        AND AH.AH_TIPO = '2'
+        AND AH.AH_STATUS = 0
+      `,
+					[empId],
+					"Error fetching balance",
+					transaction,
+				);
+
+				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
+
+				const minAmount = balance * 0.1;
+				const maxAmount = balance * 0.9;
+
+				if (amount < minAmount || amount > maxAmount) {
+					await transaction.rollback();
+
+					return {
+						success: false,
+						message:
+							"El monto solicitado está fuera de los límites permitidos.",
+					};
+				}
+
+				if (weeks < 2) {
+					await transaction.rollback();
+
+					return {
+						success: false,
+						message: "El plazo mínimo es de 2 semanas.",
+					};
+				}
+
+				const interestRate = 15.9;
+				const interestTotal = parseFloat(
+					((interestRate / 100) * weeks * amount).toFixed(2),
+				);
+
+				const totalToPay = parseFloat((amount + interestTotal).toFixed(2));
+				const weeklyDiscount = parseFloat((totalToPay / weeks).toFixed(2));
+
+				// 3️⃣ Insert loan snapshot
+				await executeParameterizedQueryTx(
+					`
+					INSERT INTO Loans (
+						employee_id,
+						employee_name,
+						region_id,
+						plant_code,
+						project_code,
+						classification,
+						turn_code,
+						job_title_code,
+						amount,
+						weeks,
+						interest_rate,
+						interest_total,
+						total_to_pay,
+						weekly_discount,
+						status
+					)
+					VALUES (
+						@param1, @param2, @param3, @param4, @param5,
+						@param6, @param7, @param8,
+						@param9, @param10, @param11,
+						@param12, @param13, @param14,
+						'Pending'
+					)
+					`,
+					[
+						empId,
+						name,
+						region,
+						user.plant_code || "",
+						user.project_code || "",
+						user.classification || "",
+						user.turn_code || "",
+						user.job_title_code || "",
+						amount,
+						weeks,
+						interestRate,
+						interestTotal,
+						totalToPay,
+						weeklyDiscount,
+					],
+					"Error inserting loan",
+					transaction,
+				);
+
+				await transaction.commit();
+
+				return {
+					success: true,
+					message: "Solicitud registrada correctamente.",
+				};
+			} catch (error) {
+				console.error("requestLoan TX error:", error);
+
+				await transaction.rollback();
+
+				return {
+					success: false,
+					message: "Error al procesar la solicitud.",
+				};
 			}
-
-			// 3) Get user details (area/project/plant)
-			const userDetails = await executeQuery(
-				`SELECT CB_CODIGO as employee_id,
-						CB_NIVEL${code.area}       AS area,
-						CB_NIVEL${code.supervisor} AS project,
-						CB_NIVEL${code.planta}     AS plant
-				FROM COLABORA
-				WHERE CB_CODIGO = '${empId}'`,
-				"Error fetching user details",
-				dbs.colabora,
-			);
-
-			if (!userDetails?.length)
-				throw new Error("Employee not found for region");
-
-			const area = String(userDetails[0].area || "").trim();
-			const project = String(userDetails[0].project || "").trim();
-			const plant = String(userDetails[0].plant || "").trim();
-
-			// if (!fileRow?.length)
-			// 	throw new Error("File not found for this notification");
-
-			// const fileName = fileRow[0].file_name;
-			// // basic allowlist to avoid traversal
-			// if (!/^[a-zA-Z0-9._-]+$/.test(fileName))
-			// 	throw new Error("Invalid filename");
-
-			// // 6) Sign a short-lived (2 min) download token
-			// const token = jwt.sign(
-			// 	{ typ: "download", file: fileName, empId, region },
-			// 	notifKey,
-			// 	{ expiresIn: "2m" },
-			// );
-
-			// 7) Build absolute URL to your download route
-			const base =
-				process.env.HOST === "PRODUCTION"
-					? "https://api.tecmamovilconnect.com"
-					: "https://dev-api.tecmamovilconnect.com";
-
-			return {
-				success: true,
-				message: `Success in call for ${empId} in region ${region} with example input ${example}`,
-				// url: `${base}/download/notification?token=${encodeURIComponent(token)}`,
-			};
 		}),
 		testMutation: async () => {
 			return "Done";
