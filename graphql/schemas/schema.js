@@ -431,7 +431,7 @@ const typeDefs = gql`
 		maxAmount: Float!
 		maxWeeks: Int!
 		interestRate: Float!
-		existingLoanStatus: Boolean!
+		loanStatus: String
 		cycle: LoanCycle
 		serverNow: String!
 	}
