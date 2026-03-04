@@ -2,7 +2,7 @@ const {
 	executeQuery,
 	executeParameterizedQuery,
 	executeQueryNew,
-	executeParameterizedQueryTx
+	executeParameterizedQueryTx,
 } = require("../../utils/dbUtils");
 const jwt = require("jsonwebtoken");
 const { decryptOld, encryptOld, encrypt } = require("../../utils/decryption");
@@ -571,8 +571,9 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
-				}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${
+						region === "TIJ" ? "1" : "3"
+					}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -1708,7 +1709,7 @@ const resolvers = {
 					FROM Loans
 					WHERE employee_id = @param1
 						AND YEAR(requested_at) = YEAR(GETDATE())
-						AND status IN ('PENDING','APPROVED','ACTIVE')
+						-- AND status IN ('PENDING','APPROVED','ACTIVE', 'REJECTED', 'COMPLETED')
 					ORDER BY requested_at DESC
 					`,
 					[empId],
@@ -1716,11 +1717,110 @@ const resolvers = {
 					dbs.tecmamovil,
 				);
 
-				const loanStatus = existingLoan?.[0]?.status || null;
+				const oldRequestedLoan = await executeQuery(
+					`DECLARE @CurrentYear INT = YEAR(GETDATE());
+					DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear,1,1);
+					DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear+1,1,1);
+
+					DECLARE @Exists NVARCHAR(5);
+
+					SET @Exists = (
+						SELECT CASE 
+							WHEN EXISTS (
+								SELECT 1
+								FROM K_Solicitudes
+								WHERE Fecha >= @StartDate
+								AND Fecha < @EndDate
+								AND No = ${empId}
+							)
+							THEN 'true'
+							ELSE 'false'
+						END
+					);
+
+					SELECT @Exists AS status;`,
+					"Error fetching existing loan k",
+					dbs.kioskotek,
+				);
+
+				const oldExistingLoan = await executeQuery(
+					`Declare @CurrentYear INT = YEAR(GETDATE());
+						Declare @Exists NVARCHAR(5);
+		
+						Set @Exists = (
+							Select Case 
+								When Exists (
+									Select 1
+									From PRESTAMO
+									Where YEAR(PR_FECHA) = @CurrentYear
+									And CB_CODIGO = ${empId}
+									And PR_TIPO = '4'
+								) Then 'true'
+								Else 'false'
+							End
+						);
+		
+						Select 
+							@Exists As status`,
+					"Error fetching prenomina days information",
+					dbs.colabora,
+				);
+
+				let loanStatus = existingLoan?.[0]?.status || null;
+
+				const oldLoanRequested =
+					oldRequestedLoan[0].status === "true" ? true : false;
+
+				if (oldLoanRequested) {
+					isAllowed = false;
+					loanStatus = "PENDING";
+					// reason = "Tienes una solicitud de préstamo pendiente de aprobación.";
+				}
+
+				const oldLoanExists =
+					oldExistingLoan[0].status === "true" ? true : false;
+
+				if (oldLoanExists) {
+					isAllowed = false;
+					loanStatus = "COMPLETED";
+					// reason = "Has solicitado un préstamo y ha sido entregado.";
+				}
+
+				console.log(
+					"Existing loan status: ",
+					loanStatus,
+					"Old loan exists: ",
+					oldLoanExists,
+					"Old loan requested: ",
+					oldLoanRequested,
+				);
 
 				if (loanStatus) {
-					isAllowed = false;
-					reason = "Ya existe un préstamo activo en este año.";
+					// console.log("Evaluating loan status: ", loanStatus);
+					switch (loanStatus) {
+						case "PENDING":
+							isAllowed = false;
+							reason =
+								"Tienes una solicitud de préstamo pendiente de aprobación.";
+							break;
+						case "APPROVED":
+							isAllowed = false;
+							reason = "Tienes una solicitud de préstamo aprobada.";
+							break;
+						case "REJECTED":
+							isAllowed = false;
+							reason = "Tienes una solicitud de préstamo rechazada.";
+							break;
+						case "COMPLETED":
+							isAllowed = false;
+							reason = "Has solicitado un préstamo y ha sido entregado.";
+							break;
+						default:
+							break;
+					}
+				} else {
+					isAllowed = true;
+					reason = "No tienes solicitudes de préstamo activas.";
 				}
 
 				// 4️⃣ Fetch loan cycle config
@@ -1761,10 +1861,14 @@ const resolvers = {
 
 				if (isAllowed && (now < loanStart || now > loanEnd)) {
 					isAllowed = false;
-					reason = "No se encuentra dentro del periodo permitido para préstamos.";
+					reason =
+						"No se encuentra dentro del periodo permitido para préstamos.";
 				}
 
 				if (isAllowed) {
+					console.log(
+						`Current week of the year: ${now.weekNumber}, Loan start week: ${loanStart.weekNumber}, Loan end week: ${loanEnd.weekNumber}`,
+					);
 					const currentWeek =
 						Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
 
@@ -2530,7 +2634,8 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
+					and Proyecto = '${
+						region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
 					dbs.kioskotek,
@@ -2571,12 +2676,13 @@ const resolvers = {
 						} else {
 							letterType = letter.substring(5);
 						}
-						newFileName = `${letter === "CartaPrestamo"
-							? "CartaSalario"
-							: letter === "CartaPermiso"
-								? "CartaViaje"
-								: letter
-							}_${numEmp} - ${formattedCustom}.pdf`;
+						newFileName = `${
+							letter === "CartaPrestamo"
+								? "CartaSalario"
+								: letter === "CartaPermiso"
+									? "CartaViaje"
+									: letter
+						}_${numEmp} - ${formattedCustom}.pdf`;
 
 						let code = {};
 						switch (region) {
@@ -4581,7 +4687,10 @@ const resolvers = {
 					return { success: false, message: "Semanas inválidas." };
 
 				if (parsedWeeks < 2)
-					return { success: false, message: "El plazo mínimo es de 2 semanas." };
+					return {
+						success: false,
+						message: "El plazo mínimo es de 2 semanas.",
+					};
 
 				const safeAmount = parseFloat(parsedAmount.toFixed(2));
 				const safeWeeks = parsedWeeks;
@@ -4637,15 +4746,18 @@ const resolvers = {
 						CB_APE_PAT AS last_name_pat,
 						CB_APE_MAT AS last_name_mat
 						
-				FROM COLABORA
-				WHERE CB_CODIGO = '${empId}'`,
+					FROM COLABORA
+					WHERE CB_CODIGO = '${empId}'`,
 					"Error fetching user details",
 					dbs.colabora,
 				);
 
 				if (!userDetails?.length) {
 					console.error("Employee not found for region", { empId, region });
-					return { success: false, message: "Empleado no encontrado para esta región." };
+					return {
+						success: false,
+						message: "Empleado no encontrado para esta región.",
+					};
 				}
 
 				// 1️⃣ Fetch balance (outside TX)
@@ -4667,19 +4779,25 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching balance",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
 
 				if (!Number.isFinite(balance) || balance <= 0)
-					return { success: false, message: "No fue posible obtener el saldo." };
+					return {
+						success: false,
+						message: "No fue posible obtener el saldo.",
+					};
 
 				const minAmount = parseFloat((balance * 0.1).toFixed(2));
 				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
 
 				if (safeAmount < minAmount || safeAmount > maxAmount)
-					return { success: false, message: "Monto fuera de límites permitidos." };
+					return {
+						success: false,
+						message: "Monto fuera de límites permitidos.",
+					};
 
 				// 2️⃣ Fetch cycle config (read only)
 				const cycleResult = await executeParameterizedQuery(
@@ -4690,7 +4808,7 @@ const resolvers = {
 					`,
 					[],
 					"Error fetching cycle",
-					dbs.tecmamovil
+					dbs.tecmamovil,
 				);
 
 				const initialWeek = cycleResult?.[0]?.semana_inicial;
@@ -4702,7 +4820,7 @@ const resolvers = {
 				const getFirstSaturday = (year) => {
 					let first = DateTime.fromObject(
 						{ year, month: 1, day: 1 },
-						{ zone: BUSINESS_TZ }
+						{ zone: BUSINESS_TZ },
 					);
 					while (first.weekday !== 6) first = first.plus({ days: 1 });
 					return first.startOf("day");
@@ -4710,7 +4828,9 @@ const resolvers = {
 
 				const firstSaturday = getFirstSaturday(now.year);
 				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
-				const loanEnd = firstSaturday.plus({ weeks: finalWeek - 1 }).endOf("week");
+				const loanEnd = firstSaturday
+					.plus({ weeks: finalWeek - 1 })
+					.endOf("week");
 
 				if (now < loanStart || now > loanEnd)
 					return { success: false, message: "Fuera del periodo permitido." };
@@ -4725,15 +4845,13 @@ const resolvers = {
 
 				const interestRate = 0.159;
 				const interestTotal = parseFloat(
-					(((interestRate / 100) * safeWeeks * safeAmount)).toFixed(2)
+					((interestRate * safeWeeks * safeAmount) / 100).toFixed(2),
 				);
 				const totalToPay = parseFloat((safeAmount + interestTotal).toFixed(2));
-				const weeklyDiscount = parseFloat(
-					(totalToPay / safeWeeks).toFixed(2)
-				);
+				const weeklyDiscount = parseFloat((totalToPay / safeWeeks).toFixed(2));
 
 				/* ===========================
-				   🔹 PHASE 2: TRANSACTION
+					🔹 PHASE 2: TRANSACTION
 				   =========================== */
 
 				const pool = await poolPromises[dbs.tecmamovil];
@@ -4753,14 +4871,87 @@ const resolvers = {
 						`,
 						[empId],
 						"Error checking existing loan",
-						transaction
+						transaction,
 					);
 
-					if (existingLoan.length > 0) {
+					const oldRequestedLoan = await executeQuery(
+						`DECLARE @CurrentYear INT = YEAR(GETDATE());
+					DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear,1,1);
+					DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear+1,1,1);
+
+					DECLARE @Exists NVARCHAR(5);
+
+					SET @Exists = (
+						SELECT CASE 
+							WHEN EXISTS (
+								SELECT 1
+								FROM K_Solicitudes
+								WHERE Fecha >= @StartDate
+								AND Fecha < @EndDate
+								AND No = ${empId}
+							)
+							THEN 'true'
+							ELSE 'false'
+						END
+					);
+
+					SELECT @Exists AS status;`,
+						"Error fetching existing loan k",
+						dbs.kioskotek,
+					);
+
+					const oldExistingLoan = await executeQuery(
+						`Declare @CurrentYear INT = YEAR(GETDATE());
+							Declare @Exists NVARCHAR(5);
+			
+							Set @Exists = (
+								Select Case 
+									When Exists (
+										Select 1
+										From PRESTAMO
+										Where YEAR(PR_FECHA) = @CurrentYear
+										And CB_CODIGO = ${empId}
+										And PR_TIPO = '4'
+									) Then 'true'
+									Else 'false'
+								End
+							);
+			
+							Select 
+								@Exists As status`,
+						"Error fetching prenomina days information",
+						dbs.colabora,
+					);
+
+					const oldLoanRequested =
+						oldRequestedLoan[0].status === "true" ? true : false;
+
+					if (oldLoanRequested) {
+						isAllowed = false;
+						loanStatus = "PENDING";
+						// reason = "Tienes una solicitud de préstamo pendiente de aprobación.";
+					}
+
+					const oldLoanExists =
+						oldExistingLoan[0].status === "true" ? true : false;
+
+					if (oldLoanExists) {
+						isAllowed = false;
+						loanStatus = "COMPLETED";
+						// reason = "Has solicitado un préstamo y ha sido entregado.";
+					}
+
+					if (oldLoanRequested) {
 						await transaction.rollback();
 						return {
 							success: false,
-							message: "Ya existe un préstamo activo este año.",
+							message: "Tienes una solicitud de préstamo pendiente de aprobación.",
+						};
+					} else if (existingLoan.length > 0 || oldLoanExists) {
+						await transaction.rollback();
+						return {
+							success: false,
+							message: "Has solicitado un préstamo y ha sido entregado.",
 						};
 					}
 
@@ -4796,11 +4987,16 @@ const resolvers = {
 						`,
 						[
 							empId,
-							`${userDetails[0].first_name}${userDetails[0].last_name_pat ? ` ${userDetails[0].last_name_pat}` : ''}${userDetails[0].last_name_mat ? ` ${userDetails[0].last_name_mat}` : ''}`.trim(),
-							region === "JRZ" ? 1 :
-								region === "SAL" ? 2 :
-									region === "MTY" ? 3 :
-										region === "TIJ" ? 4 : 0,
+							`${userDetails[0].first_name}${userDetails[0].last_name_pat ? ` ${userDetails[0].last_name_pat}` : ""}${userDetails[0].last_name_mat ? ` ${userDetails[0].last_name_mat}` : ""}`.trim(),
+							region === "JRZ"
+								? 1
+								: region === "SAL"
+									? 2
+									: region === "MTY"
+										? 3
+										: region === "TIJ"
+											? 4
+											: 0,
 
 							userDetails[0].plant_code || "",
 							userDetails[0].project_code || "",
@@ -4817,10 +5013,10 @@ const resolvers = {
 							interestRate,
 							interestTotal,
 							totalToPay,
-							weeklyDiscount
+							weeklyDiscount,
 						],
 						"Error inserting loan",
-						transaction
+						transaction,
 					);
 
 					await transaction.commit();
@@ -4829,12 +5025,10 @@ const resolvers = {
 						success: true,
 						message: "Solicitud registrada correctamente.",
 					};
-
 				} catch (txErr) {
 					await transaction.rollback();
 					return { success: false, message: "Error al procesar la solicitud." };
 				}
-
 			} catch (err) {
 				console.error("requestLoan error:", err);
 				return { success: false, message: "Error al procesar la solicitud." };
