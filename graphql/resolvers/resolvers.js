@@ -571,9 +571,8 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${
-						region === "TIJ" ? "1" : "3"
-					}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
+				}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -2649,8 +2648,7 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${
-						region === "TIJ" || region === "SAL" ? project[0] : project
+					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
 					dbs.kioskotek,
@@ -2691,13 +2689,12 @@ const resolvers = {
 						} else {
 							letterType = letter.substring(5);
 						}
-						newFileName = `${
-							letter === "CartaPrestamo"
-								? "CartaSalario"
-								: letter === "CartaPermiso"
-									? "CartaViaje"
-									: letter
-						}_${numEmp} - ${formattedCustom}.pdf`;
+						newFileName = `${letter === "CartaPrestamo"
+							? "CartaSalario"
+							: letter === "CartaPermiso"
+								? "CartaViaje"
+								: letter
+							}_${numEmp} - ${formattedCustom}.pdf`;
 
 						let code = {};
 						switch (region) {
@@ -3050,7 +3047,7 @@ const resolvers = {
 						// 	"1301786"
 						// ]);
 
-						if (data.plant_id.trim() === "8-41" || data.plant_id.trim() === "V-D" ) {
+						if (data.plant_id.trim() === "8-41" || data.plant_id.trim() === "V-D") {
 							return { pdfFile: "Exists" };
 						}
 
@@ -3286,6 +3283,7 @@ const resolvers = {
 						break;
 					}
 					case "RetiroFA": {
+						spoti
 						letterType = letter;
 
 						const formatDateToSpanish = () => {
@@ -4574,93 +4572,35 @@ const resolvers = {
 				};
 			}
 		},
-		// requestLoan: requireAuth(async (_, { input }, { user }) => {
-		// 	if (!user) throw new Error("Unauthorized");
-
-		// 	const { empId, region } = user;
-		// 	console.log("User info from context: ", user, "Input: ", input);
-
-		// 	// 1) Select correct DBs for this region
-		// 	const dbs = await selectRegion(region);
-
-		// 	// 2) Map NIVEL indices based on region (same logic you use in Notifications)
-		// 	let code = {};
-		// 	switch (region) {
-		// 		case "JRZ":
-		// 		case "MTY":
-		// 		case "AMX":
-		// 			code.supervisor = "3";
-		// 			code.area = "5";
-		// 			code.planta = "7";
-		// 			break;
-		// 		case "SAL":
-		// 		case "TIJ":
-		// 			code.supervisor = "8";
-		// 			code.area = "6";
-		// 			code.planta = "1";
-		// 			break;
-		// 		default:
-		// 			throw new Error(`Unsupported region: ${region}`);
-		// 	}
-
-		// 	// 3) Get user details (area/project/plant)
-		// 	const userDetails = await executeQuery(
-		// 		`SELECT CB_CODIGO as employee_id,
-		// 				CB_NIVEL${code.area}       AS area,
-		// 				CB_NIVEL${code.supervisor} AS project,
-		// 				CB_NIVEL${code.planta}     AS plant
-		// 		FROM COLABORA
-		// 		WHERE CB_CODIGO = '${empId}'`,
-		// 		"Error fetching user details",
-		// 		dbs.colabora,
-		// 	);
-
-		// 	if (!userDetails?.length)
-		// 		throw new Error("Employee not found for region");
-
-		// 	const area = String(userDetails[0].area || "").trim();
-		// 	const project = String(userDetails[0].project || "").trim();
-		// 	const plant = String(userDetails[0].plant || "").trim();
-
-		// 	// if (!fileRow?.length)
-		// 	// 	throw new Error("File not found for this notification");
-
-		// 	// const fileName = fileRow[0].file_name;
-		// 	// // basic allowlist to avoid traversal
-		// 	// if (!/^[a-zA-Z0-9._-]+$/.test(fileName))
-		// 	// 	throw new Error("Invalid filename");
-
-		// 	// // 6) Sign a short-lived (2 min) download token
-		// 	// const token = jwt.sign(
-		// 	// 	{ typ: "download", file: fileName, empId, region },
-		// 	// 	notifKey,
-		// 	// 	{ expiresIn: "2m" },
-		// 	// );
-
-		// 	// 7) Build absolute URL to your download route
-		// 	const base =
-		// 		process.env.HOST === "PRODUCTION"
-		// 			? "https://api.tecmamovilconnect.com"
-		// 			: "https://dev-api.tecmamovilconnect.com";
-
-		// 	return {
-		// 		success: true,
-		// 		message: `Success in call for ${empId} in region ${region} with example input ${example}`,
-		// 		// url: `${base}/download/notification?token=${encodeURIComponent(token)}`,
-		// 	};
-		// }),
-		// requestLoan resolver (full refactor)
-		// Requirements covered:
-		// - Status codes: PENDING/APPROVED/ACTIVE/REJECTED/COMPLETED (using PENDING now)
-		// - Re-check eligibility INSIDE TX (cycle window + maxWeeks + existing loan)
-		// - Consistent balance logic (same “latest AH_FECHA” pattern as LoanData)
-		// - Parameterized queries everywhere
-		// - Prevent duplicates with SERIALIZABLE + UPDLOCK/HOLDLOCK
-		// - Strong input validation (finite numbers, 2 decimals)
-		// - Uses BUSINESS_TZ to avoid timezone drift
-		// - Inserts requested_at/created_at/updated_at explicitly
-
 		requestLoan: requireAuth(async (_, { input }, { user }) => {
+			// helper: save pdf into /public/loans
+			const shardPathFromLoanId = (loanId) => {
+				const s = String(loanId).padStart(6, "0");
+				return { shard1: s.slice(0, 3), shard2: s.slice(3, 6) };
+			};
+
+			const saveLoanPdf = async ({ buffer, loanId }) => {
+				const { shard1, shard2 } = shardPathFromLoanId(loanId);
+
+				const relDir = path.join("loans", shard1, shard2);
+				const absDir = path.join(__dirname, "../../public", relDir);
+
+				await fs.promises.mkdir(absDir, { recursive: true });
+
+				const fileName = `PrestamoFA_${loanId}.pdf`;
+				const absPath = path.join(absDir, fileName);
+
+				const tmpPath = absPath + ".tmp";
+
+				await fs.promises.writeFile(tmpPath, buffer);
+				await fs.promises.rename(tmpPath, absPath);
+
+				return {
+					pdf_file_name: fileName,
+					pdf_relative_path: path.join(relDir, fileName).replaceAll("\\", "/"),
+				};
+			};
+
 			try {
 				if (!user) throw new Error("Unauthorized");
 
@@ -4675,10 +4615,7 @@ const resolvers = {
 					return { success: false, message: "Semanas inválidas." };
 
 				if (parsedWeeks < 2)
-					return {
-						success: false,
-						message: "El plazo mínimo es de 2 semanas.",
-					};
+					return { success: false, message: "El plazo mínimo es de 2 semanas." };
 
 				const safeAmount = parseFloat(parsedAmount.toFixed(2));
 				const safeWeeks = parsedWeeks;
@@ -4690,104 +4627,99 @@ const resolvers = {
 				const dbs = await selectRegion(region);
 
 				/* ===========================
-				   🔹 PHASE 1: READ + VALIDATE
+				   PHASE 1: READ + VALIDATE (NO TX)
 				   =========================== */
 
-				// 2) Map NIVEL indices based on region (same logic you use in Notifications)
-				let code = {};
-				const setCodes = async () => {
-					switch (user.region) {
-						case "JRZ":
-						case "MTY":
-						case "AMX": {
-							code.supervisor = "3";
-							code.area = "5";
-							code.proyecto = "0";
-							code.planta = "7";
-							break;
-						}
-						case "SAL":
-						case "TIJ": {
-							code.supervisor = "8";
-							code.proyecto = "5";
-							code.area = "6";
-							code.planta = "1";
-							break;
-						}
-					}
-				};
+				// 1) Map NIVEL indices by region
+				const code = {};
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.proyecto = "0";
+						code.planta = "7";
+						break;
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.proyecto = "5";
+						code.area = "6";
+						code.planta = "1";
+						break;
+					default:
+						return { success: false, message: "Región no soportada." };
+				}
 
-				await setCodes();
-
-				// 3) Get user details (area/project/plant)
-				const userDetails = await executeQuery(
-					`SELECT CB_CODIGO as employee_id,
-						CB_NIVEL${code.area}       	AS area_code,
-						CB_NIVEL${code.supervisor} 	AS supervisor_code,
-						CB_NIVEL${code.planta}     	AS plant_code,
-						CB_NIVEL${code.proyecto}   	AS project_code,
-						CB_TURNO 					AS turn_code,
-						CB_PUESTO 					AS job_title_code,
-						CB_CLASIFI As classification,
-						
-						CB_NOMBRES AS first_name,
-						CB_APE_PAT AS last_name_pat,
-						CB_APE_MAT AS last_name_mat
-						
-					FROM COLABORA
-					WHERE CB_CODIGO = '${empId}'`,
+				// 2) Employee details (PARAMETERIZED)
+				const userDetails = await executeParameterizedQuery(
+					`
+					SELECT
+						C.CB_CODIGO as employee_id,
+						C.CB_NIVEL${code.area}       	AS area_code,
+						C.CB_NIVEL${code.supervisor} 	AS supervisor_code,
+						C.CB_NIVEL${code.planta}     	AS plant_code,
+						C.CB_NIVEL${code.proyecto}   	AS project_code,
+						C.CB_TURNO 					AS turn_code,
+						C.CB_PUESTO 					AS job_title_code,
+						C.CB_CLASIFI 					AS classification,
+						C.CB_NOMBRES 					AS first_name,
+						C.CB_APE_PAT 					AS last_name_pat,
+						C.CB_APE_MAT 					AS last_name_mat,
+						RS.RS_NOMBRE 					AS company_name
+					FROM COLABORA AS C
+					INNER JOIN RPATRON AS RP ON RP.TB_CODIGO = C.CB_PATRON
+					INNER JOIN RSOCIAL AS RS ON RS.RS_CODIGO = RP.RS_CODIGO
+					WHERE C.CB_CODIGO = @param1
+					`,
+					[empId],
 					"Error fetching user details",
-					dbs.colabora,
+					dbs.colabora
 				);
 
 				if (!userDetails?.length) {
-					console.error("Employee not found for region", { empId, region });
 					return {
 						success: false,
 						message: "Empleado no encontrado para esta región.",
 					};
 				}
 
-				// 1️⃣ Fetch balance (outside TX)
+				const u = userDetails[0];
+
+				// 3) Balance (outside TX)
 				const balanceResult = await executeParameterizedQuery(
 					`
-					SELECT 
+					SELECT
 						SUM(AH.AH_SALDO) * 2 AS SaldoFA
 					FROM AHORRO AH
 					WHERE AH.CB_CODIGO = @param1
 						AND AH.AH_TIPO = '2'
 						AND AH.AH_STATUS = 0
 						AND AH.AH_FECHA = (
-						SELECT MAX(AH_FECHA)
-						FROM AHORRO
-						WHERE CB_CODIGO = @param1
-							AND AH_STATUS = 0
-							AND AH_TIPO = '2'
+							SELECT MAX(AH_FECHA)
+							FROM AHORRO
+							WHERE CB_CODIGO = @param1
+								AND AH_STATUS = 0
+								AND AH_TIPO = '2'
 						)
 					`,
 					[empId],
 					"Error fetching balance",
-					dbs.colabora,
+					dbs.colabora
 				);
 
 				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
-
 				if (!Number.isFinite(balance) || balance <= 0)
-					return {
-						success: false,
-						message: "No fue posible obtener el saldo.",
-					};
+					return { success: false, message: "No fue posible obtener el saldo." };
 
 				const minAmount = parseFloat((balance * 0.1).toFixed(2));
 				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
 
 				if (safeAmount < minAmount || safeAmount > maxAmount)
-					return {
-						success: false,
-						message: "Monto fuera de límites permitidos.",
-					};
+					return { success: false, message: "Monto fuera de límites permitidos." };
 
-				// 2️⃣ Fetch cycle config (read only)
+				// 4) Cycle config
 				const cycleResult = await executeParameterizedQuery(
 					`
 					SELECT TOP 1 semana_inicial, semana_final
@@ -4796,7 +4728,7 @@ const resolvers = {
 					`,
 					[],
 					"Error fetching cycle",
-					dbs.tecmamovil,
+					dbs.tecmamovil
 				);
 
 				const initialWeek = cycleResult?.[0]?.semana_inicial;
@@ -4808,7 +4740,7 @@ const resolvers = {
 				const getFirstSaturday = (year) => {
 					let first = DateTime.fromObject(
 						{ year, month: 1, day: 1 },
-						{ zone: BUSINESS_TZ },
+						{ zone: BUSINESS_TZ }
 					);
 					while (first.weekday !== 6) first = first.plus({ days: 1 });
 					return first.startOf("day");
@@ -4816,136 +4748,120 @@ const resolvers = {
 
 				const firstSaturday = getFirstSaturday(now.year);
 				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
-				const loanEnd = firstSaturday
-					.plus({ weeks: finalWeek - 1 })
-					.endOf("week");
+				const loanEnd = firstSaturday.plus({ weeks: finalWeek - 1 }).endOf("week");
 
 				if (now < loanStart || now > loanEnd)
 					return { success: false, message: "Fuera del periodo permitido." };
 
 				const currentWeek =
 					Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
-
 				const maxWeeks = finalWeek - currentWeek + 1;
 
 				if (safeWeeks > maxWeeks)
 					return { success: false, message: "Semanas exceden el límite." };
 
+				// 5) Old system checks (done OUTSIDE TX)
+				const oldRequestedLoan = await executeParameterizedQuery(
+					`
+					DECLARE @CurrentYear INT = YEAR(GETDATE());
+					DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear,1,1);
+					DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear+1,1,1);
+
+					SELECT CASE WHEN EXISTS (
+						SELECT 1
+						FROM K_Solicitudes
+						WHERE Fecha >= @StartDate
+							AND Fecha < @EndDate
+							AND No = @param1
+							AND Carta = 'PtmoFA'
+					)
+					THEN 'true' ELSE 'false' END AS status;
+					`,
+					[empId],
+					"Error fetching existing loan request (old kioskotek)",
+					dbs.kioskotek
+				);
+
+				const oldExistingLoan = await executeParameterizedQuery(
+					`
+					DECLARE @CurrentYear INT = YEAR(GETDATE());
+
+					SELECT CASE WHEN EXISTS (
+						SELECT 1
+						FROM PRESTAMO
+						WHERE YEAR(PR_FECHA) = @CurrentYear
+							AND CB_CODIGO = @param1
+							AND PR_TIPO = '4'
+					)
+					THEN 'true' ELSE 'false' END AS status;
+					`,
+					[empId],
+					"Error fetching existing loan (old colabora)",
+					dbs.colabora
+				);
+
+				const oldLoanRequested = oldRequestedLoan?.[0]?.status === "true";
+				const oldLoanExists = oldExistingLoan?.[0]?.status === "true";
+
+				if (oldLoanRequested) {
+					return {
+						success: false,
+						message: "Tienes una solicitud de préstamo pendiente de aprobación.",
+					};
+				}
+				if (oldLoanExists) {
+					return {
+						success: false,
+						message: "Has solicitado un préstamo y ha sido entregado.",
+					};
+				}
+
+				// 6) Financial calcs (kept as you had them — NOT FIXED)
 				const interestRate = 0.159;
 				const interestTotal = parseFloat(
-					((interestRate * safeWeeks * safeAmount) / 100).toFixed(2),
+					((interestRate * safeWeeks * safeAmount) / 100).toFixed(2)
 				);
 				const totalToPay = parseFloat((safeAmount + interestTotal).toFixed(2));
 				const weeklyDiscount = parseFloat((totalToPay / safeWeeks).toFixed(2));
 
 				/* ===========================
-					🔹 PHASE 2: TRANSACTION
+				   PHASE 2: TX (Loans only)
+				   - check duplicate
+				   - insert + OUTPUT loan_id
 				   =========================== */
 
 				const pool = await poolPromises[dbs.tecmamovil];
-				const transaction = new sql.Transaction(pool);
+				const tx = new sql.Transaction(pool);
 
-				await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+				let loanId;
 
+				await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 				try {
-					// Lock + check duplicate
+					// Duplicate check (only NEW Loans)
 					const existingLoan = await executeParameterizedQueryTx(
 						`
-						SELECT loan_id
+						SELECT TOP 1 loan_id
 						FROM Loans WITH (UPDLOCK, HOLDLOCK)
 						WHERE employee_id = @param1
-						AND YEAR(requested_at) = YEAR(GETDATE())
-						AND status IN ('PENDING','APPROVED','ACTIVE')
+							AND YEAR(requested_at) = YEAR(GETDATE())
+							AND status IN ('PENDING','APPROVED','ACTIVE')
+						ORDER BY requested_at DESC
 						`,
 						[empId],
 						"Error checking existing loan",
-						transaction,
+						tx
 					);
 
-					const oldRequestedLoan = await executeQuery(
-						`DECLARE @CurrentYear INT = YEAR(GETDATE());
-					DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear,1,1);
-					DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear+1,1,1);
-
-					DECLARE @Exists NVARCHAR(5);
-
-					SET @Exists = (
-						SELECT CASE 
-							WHEN EXISTS (
-								SELECT 1
-								FROM K_Solicitudes
-								WHERE Fecha >= @StartDate
-								AND Fecha < @EndDate
-								AND No = ${empId}
-							)
-							THEN 'true'
-							ELSE 'false'
-						END
-					);
-
-					SELECT @Exists AS status;`,
-						"Error fetching existing loan k",
-						dbs.kioskotek,
-					);
-
-					const oldExistingLoan = await executeQuery(
-						`Declare @CurrentYear INT = YEAR(GETDATE());
-							Declare @Exists NVARCHAR(5);
-			
-							Set @Exists = (
-								Select Case 
-									When Exists (
-										Select 1
-										From PRESTAMO
-										Where YEAR(PR_FECHA) = @CurrentYear
-										And CB_CODIGO = ${empId}
-										And PR_TIPO = '4'
-									) Then 'true'
-									Else 'false'
-								End
-							);
-			
-							Select 
-								@Exists As status`,
-						"Error fetching prenomina days information",
-						dbs.colabora,
-					);
-
-					const oldLoanRequested =
-						oldRequestedLoan[0].status === "true" ? true : false;
-
-					if (oldLoanRequested) {
-						isAllowed = false;
-						loanStatus = "PENDING";
-						// reason = "Tienes una solicitud de préstamo pendiente de aprobación.";
-					}
-
-					const oldLoanExists =
-						oldExistingLoan[0].status === "true" ? true : false;
-
-					if (oldLoanExists) {
-						isAllowed = false;
-						loanStatus = "COMPLETED";
-						// reason = "Has solicitado un préstamo y ha sido entregado.";
-					}
-
-					if (oldLoanRequested) {
-						await transaction.rollback();
+					if (existingLoan.length > 0) {
+						await tx.rollback();
 						return {
 							success: false,
-							message:
-								"Tienes una solicitud de préstamo pendiente de aprobación.",
-						};
-					} else if (existingLoan.length > 0 || oldLoanExists) {
-						await transaction.rollback();
-						return {
-							success: false,
-							message: "Has solicitado un préstamo y ha sido entregado.",
+							message: "Ya existe un préstamo activo este año.",
 						};
 					}
 
-					// Insert snapshot
-					await executeParameterizedQueryTx(
+					// Insert and get loan_id
+					const insertResult = await executeParameterizedQueryTx(
 						`
 						INSERT INTO Loans (
 							employee_id,
@@ -4966,6 +4882,7 @@ const resolvers = {
 							weekly_discount,
 							status
 						)
+						OUTPUT INSERTED.loan_id
 						VALUES (
 							@param1, @param2, @param3, @param4, @param5,
 							@param6, @param7, @param8, @param9, @param10,
@@ -4976,27 +4893,15 @@ const resolvers = {
 						`,
 						[
 							empId,
-							`${userDetails[0].first_name}${userDetails[0].last_name_pat ? ` ${userDetails[0].last_name_pat}` : ""}${userDetails[0].last_name_mat ? ` ${userDetails[0].last_name_mat}` : ""}`.trim(),
-							region === "JRZ"
-								? 1
-								: region === "SAL"
-									? 2
-									: region === "MTY"
-										? 3
-										: region === "TIJ"
-											? 4
-											: 0,
-
-							userDetails[0].plant_code || "",
-							userDetails[0].project_code || "",
-
-							userDetails[0].area_code || "",
-							userDetails[0].supervisor_code || "",
-
-							userDetails[0].turn_code || "",
-							userDetails[0].job_title_code || "",
-							userDetails[0].classification || "",
-
+							`${u.first_name}${u.last_name_pat ? ` ${u.last_name_pat}` : ""}${u.last_name_mat ? ` ${u.last_name_mat}` : ""}`.trim(),
+							region === "JRZ" ? 1 : region === "SAL" ? 2 : region === "MTY" ? 3 : region === "TIJ" ? 4 : 0,
+							u.plant_code,
+							u.project_code,
+							u.area_code,
+							u.supervisor_code,
+							u.turn_code,
+							u.job_title_code,
+							u.classification,
 							safeAmount,
 							safeWeeks,
 							interestRate,
@@ -5005,19 +4910,114 @@ const resolvers = {
 							weeklyDiscount,
 						],
 						"Error inserting loan",
-						transaction,
+						tx
 					);
 
-					await transaction.commit();
+					loanId = insertResult?.[0]?.loan_id;
 
-					return {
-						success: true,
-						message: "Solicitud registrada correctamente.",
-					};
+					if (!loanId) {
+						throw new Error("No loan_id returned from insert.");
+					}
+
+					await tx.commit();
 				} catch (txErr) {
-					await transaction.rollback();
+					try { await tx.rollback(); } catch (_) { }
+					console.error("requestLoan TX error:", txErr);
 					return { success: false, message: "Error al procesar la solicitud." };
 				}
+
+				/* ===========================
+				   PHASE 3: PDF (no TX)
+				   - generate buffer
+				   - save under public/loans
+				   - update loan row with pdf metadata
+				   =========================== */
+
+				try {
+					function formatDateToSpanish(dateString) {
+						// Parse the date and convert it to local time
+						const localDate = new Date(dateString);
+						// console.log("Date string is: ", dateString);
+						// console.log("Local date string is: ", localDate);
+
+						const options = {
+							year: "numeric",
+							month: "long",
+							day: "numeric",
+							timeZone: "UTC",
+						};
+
+						// Get the formatted date string in Spanish (long format for months)
+						return localDate.toLocaleDateString("es-ES", options);
+					}
+
+					const formattedDate = formatDateToSpanish(new Date());
+					const full_name = `${u.last_name_pat ? `${u.last_name_pat} ` : ""}${u.last_name_mat ? `${u.last_name_mat}` : ""}${(u.last_name_pat || u.last_name_mat) ? ", " : ""}${u.first_name}`.trim();
+
+					const pdfData = {
+						...u,
+						date: formattedDate,
+						full_name,
+						requested_loan: safeAmount.toFixed(2),
+						loan_weeks: safeWeeks.toFixed(2),
+						interest: interestTotal.toFixed(2),
+						total: totalToPay.toFixed(2),
+						weekly_discount: weeklyDiscount.toFixed(2),
+					};
+
+					// Logo pick (same as you had it)
+					let logoName;
+					if ((u.project_code || "").trim() === "H09") logoName = "FLEXSTEEL.png";
+					else if ((u.project_code || "").trim() === "H75") logoName = "CLEAR.png";
+					else logoName = "LOGOTECMA.png";
+
+					const imageBase64 = fs
+						.readFileSync(path.join(__dirname, `../../public/assets/images/${logoName}`))
+						.toString("base64");
+
+					pdfData.imageBase64 = imageBase64;
+
+					const fileBuffer = await generateSavingsLoanPDF({ data: pdfData });
+
+					const { pdf_file_name, pdf_relative_path } = await saveLoanPdf({
+						buffer: fileBuffer,
+						loanId,
+					});
+
+					// Update row with PDF metadata (separate query)
+					await executeParameterizedQuery(
+						`
+						UPDATE Loans
+						SET pdf_file_name = @param1,
+							pdf_relative_path = @param2,
+							updated_at = SYSDATETIME()
+						WHERE loan_id = @param3
+						`,
+						[pdf_file_name, pdf_relative_path, loanId],
+						"Error updating loan PDF metadata",
+						dbs.tecmamovil
+					);
+
+				} catch (pdfErr) {
+					console.error("PDF generation/save error:", pdfErr);
+
+					// Optional: store note so admin can re-generate later
+					await executeParameterizedQuery(
+						`
+						UPDATE Loans
+						SET notes = LEFT(CONCAT(ISNULL(notes,''), ' | PDF_ERROR: ', @param1), 250),
+							updated_at = SYSDATETIME()
+						WHERE loan_id = @param2
+						`,
+						[String(pdfErr?.message || "PDF error"), loanId],
+						"Error updating loan note",
+						dbs.tecmamovil
+					);
+
+					// Still treat the loan request as created; PDF can be regenerated later
+				}
+
+				return { success: true, message: "Solicitud registrada correctamente." };
 			} catch (err) {
 				console.error("requestLoan error:", err);
 				return { success: false, message: "Error al procesar la solicitud." };
