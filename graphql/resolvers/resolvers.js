@@ -1960,11 +1960,26 @@ const resolvers = {
 			}
 
 			if (
+				numEmp === "26931" ||
+				numEmp === "35485" ||
+				numEmp === "26837" ||
+				numEmp === "31689" ||
+				numEmp === "41900" ||
+				numEmp === "26831" ||
+				numEmp === "27200" ||
+				numEmp === "33457" ||
+				numEmp === "33544" ||
+				numEmp === "33841" ||
+				numEmp === "34019" ||
+				numEmp === "41922" ||
 				numEmp === "14884" ||
 				numEmp === "35620" ||
 				numEmp === "40361" ||
 				numEmp === "40394" ||
-				(numEmp === "23815" && (region === "TIJ" || region === "SAL"))
+				numEmp === "23815" ||
+				numEmp === "28916" ||
+				numEmp === "42104" ||
+				(numEmp === "42099" && (region === "TIJ" || region === "SAL"))
 			) {
 				return {
 					success: false,
@@ -3027,45 +3042,18 @@ const resolvers = {
 					}
 					case "PtmoFA": {
 						letterType = letter;
-						const blockedEmployees = new Set([
-							"1301473",
-							"1302017",
-							"1301572",
-							"1301845",
-							"1301349",
-							"130469",
-							"1302146",
-							"1301257",
-							"130391",
-							"1301815",
-							"1301835",
-							"1301258",
-							"1302155",
-							"1309013",
-							"1301914",
-							"1302004",
-							"1301622",
-							"1301483",
-							"1301968",
-							"1301579",
-							"1301706",
-							"1301728",
-							"1301661",
-							"1301831",
-							"1301850",
-							"1302016",
-							"1301905",
-							"1301276",
-							"1301786",
-						]);
+						// const blockedEmployees = new Set([
+						// 	"1301473", "1302017", "1301572", "1301845", "1301349", "130469", "1302146",
+						// 	"1301257", "130391", "1301815", "1301835", "1301258", "1302155", "1309013",
+						// 	"1301914", "1302004", "1301622", "1301483", "1301968", "1301579", "1301706",
+						// 	"1301728", "1301661", "1301831", "1301850", "1302016", "1301905", "1301276",
+						// 	"1301786"
+						// ]);
 
-						if (
-							blockedEmployees.has(numEmp) ||
-							data.plant_id.trim() === "8-41"
-						) {
+						if (data.plant_id.trim() === "8-41" || data.plant_id.trim() === "V-D" ) {
 							return { pdfFile: "Exists" };
 						}
-						letterType = letter;
+
 						const interestRate = 0.159;
 						const prestamo = await executeQuery(
 							`Declare @CurrentYear INT = YEAR(GETDATE());
@@ -4945,7 +4933,8 @@ const resolvers = {
 						await transaction.rollback();
 						return {
 							success: false,
-							message: "Tienes una solicitud de préstamo pendiente de aprobación.",
+							message:
+								"Tienes una solicitud de préstamo pendiente de aprobación.",
 						};
 					} else if (existingLoan.length > 0 || oldLoanExists) {
 						await transaction.rollback();
