@@ -18,7 +18,7 @@ const {
 	returnCredStatus,
 	returnCredType,
 } = require("../../utils/returners");
-const { json } = require("express");
+// const { json } = require("express");
 const {
 	generateLetterPDF,
 	generatePayrollPDF,
