@@ -828,7 +828,7 @@ const resolvers = {
 				FROM Prestamos
 				ORDER BY fecha DESC;`,
 				"Error fetching prestamo weeks information",
-				dbs.tecmamovil,
+				"tecmamovilcentral",
 			);
 
 			const now = DateTime.now().setZone("America/Denver");
@@ -1713,7 +1713,7 @@ const resolvers = {
 					`,
 					[empId],
 					"Error checking existing loan",
-					dbs.tecmamovil,
+					"tecmamovilcentral",
 				);
 
 				const oldRequestedLoan = await executeQuery(
@@ -1833,7 +1833,7 @@ const resolvers = {
 					`,
 					[],
 					"Error fetching loan cycle",
-					dbs.tecmamovil,
+					"tecmamovilcentral",
 				);
 
 				console.log("Loan cycle config: ", cycleResult[0]);
@@ -1925,6 +1925,21 @@ const resolvers = {
 					message: "Hubo un error al obtener la información del préstamo.",
 				};
 			}
+		}),
+		BadgeData: requireAuth(async (_, __, { user }) => {
+			try {
+
+				if (!user) throw new Error("Unauthorized");
+
+				// const { empId, region } = user;
+
+				return { success: true, message: "Done", data: { format: "CODE128" } };
+
+			} catch (error) {
+				console.error("Error in badge data resolver:", error);
+				throw new Error("Failed to load badge data");
+			}
+
 		}),
 	},
 	Mutation: {
@@ -3140,7 +3155,7 @@ const resolvers = {
 							FROM Prestamos
 							ORDER BY fecha DESC;`,
 							"Error fetching prestamo weeks information",
-							dbs.tecmamovil,
+							"tecmamovilcentral",
 						);
 
 						const initial_week = prestamo_weeks[0].initial_week;
@@ -4728,7 +4743,7 @@ const resolvers = {
 					`,
 					[],
 					"Error fetching cycle",
-					dbs.tecmamovil
+					"tecmamovilcentral"
 				);
 
 				const initialWeek = cycleResult?.[0]?.semana_inicial;
@@ -4830,7 +4845,7 @@ const resolvers = {
 				   - insert + OUTPUT loan_id
 				   =========================== */
 
-				const pool = await poolPromises[dbs.tecmamovil];
+				const pool = await poolPromises["tecmamovilcentral"];
 				const tx = new sql.Transaction(pool);
 
 				let loanId;
@@ -4995,7 +5010,7 @@ const resolvers = {
 						`,
 						[pdf_file_name, pdf_relative_path, loanId],
 						"Error updating loan PDF metadata",
-						dbs.tecmamovil
+						"tecmamovilcentral"
 					);
 
 				} catch (pdfErr) {
@@ -5011,7 +5026,7 @@ const resolvers = {
 						`,
 						[String(pdfErr?.message || "PDF error"), loanId],
 						"Error updating loan note",
-						dbs.tecmamovil
+						"tecmamovilcentral"
 					);
 
 					// Still treat the loan request as created; PDF can be regenerated later

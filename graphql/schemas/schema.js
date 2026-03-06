@@ -446,6 +446,16 @@ const typeDefs = gql`
 		weeks: Int!
 	}
 
+	type ResponseBadgeData {
+		success: Boolean!
+		message: String!
+		data: BadgeData!
+	}
+
+	type BadgeData {
+		format: String!
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -493,6 +503,7 @@ const typeDefs = gql`
 		Notifications: [Notification]
 		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
 		LoanData: LoanDataResponse!
+		BadgeData: ResponseBadgeData!
 	}
 
 	type Mutation {
