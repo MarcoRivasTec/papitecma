@@ -3924,7 +3924,7 @@ const resolvers = {
 				// Construct the SQL query
 				const query = `SELECT 
 									CB_SEGSOC As imss, 
-									CB_FEC_ING As ingreso
+									CB_FEC_ANT As ingreso
 								FROM COLABORA
 								WHERE CB_CODIGO = '${numEmp}'`;
 
