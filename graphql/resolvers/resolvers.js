@@ -215,25 +215,25 @@ const resolvers = {
 			);
 
 			let restrictedSections = [];
-			if (numEmp !== "900874" && numEmp !== "94327") {
-				restrictedSections = await executeQuery(
-					`
-				SELECT DISTINCT s.section_name
-				FROM MenuAccessRestrictions AS mar
-				INNER JOIN Sections AS s ON mar.section_id = s.section_id
-				LEFT JOIN Regions AS r ON mar.region_id = r.region_id
-				WHERE 
-					mar.is_active = 1
-					AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
-					AND (mar.region_id IS NULL OR r.region_code = '${region}')
-					AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
-					AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
-					AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
-					AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
-					"Error fetching restricted sections for user",
-					"tecmamovilcentral",
-				);
-			}
+			// if (numEmp !== "900874") {
+			// 	restrictedSections = await executeQuery(
+			// 		`
+			// 	SELECT DISTINCT s.section_name
+			// 	FROM MenuAccessRestrictions AS mar
+			// 	INNER JOIN Sections AS s ON mar.section_id = s.section_id
+			// 	LEFT JOIN Regions AS r ON mar.region_id = r.region_id
+			// 	WHERE 
+			// 		mar.is_active = 1
+			// 		AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
+			// 		AND (mar.region_id IS NULL OR r.region_code = '${region}')
+			// 		AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
+			// 		AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
+			// 		AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
+			// 		AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
+			// 		"Error fetching restricted sections for user",
+			// 		"tecmamovilcentral",
+			// 	);
+			// }
 
 			console.log("Restricted sections: ", restrictedSections);
 
