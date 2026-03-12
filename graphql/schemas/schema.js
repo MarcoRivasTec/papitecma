@@ -456,6 +456,18 @@ const typeDefs = gql`
 		format: String!
 	}
 
+	type LoanFileResponse {
+		success: Boolean!
+		filename: String
+		file: String
+	}
+
+	type LoanURLFileResponse {
+		success: Boolean!
+		message: String
+		download_url: String
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -504,6 +516,9 @@ const typeDefs = gql`
 		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
 		LoanData: LoanDataResponse!
 		BadgeData: ResponseBadgeData!
+
+		downloadLoanFileInternal(loan_id: Int!): LoanFileResponse
+		RequestLoanDownloadURL(loan_id: Int!): LoanURLFileResponse
 	}
 
 	type Mutation {

@@ -13,33 +13,71 @@ const path = require("path");
 const http = require("http");
 const https = require("https");
 const { ApolloServerPluginLandingPageDisabled } = require("apollo-server-core");
+const { executeParameterizedQuery } = require("./utils/dbUtils");
 
 function getUserFromAuthHeader(req) {
-	console.log("Headers: ", req.headers);
+
+	console.log("Extracting user from auth header");
 	const auth = req.headers.authorization || "";
 	const [scheme, token] = auth.split(" ");
 
-	if ((scheme || "").toLowerCase() !== "bearer" || !token) return null;
+	if ((scheme || "").toLowerCase() !== "bearer" || !token) {
+		console.log("Invalid authorization header");
+		return null;
+	}
+
+	/* -------------------------
+	   1️⃣ Try TecmaMovil user token
+	------------------------- */
 
 	try {
-		console.log("Verifying token...");
+		console.log("Trying mobile token");
+
 		const payload = jwt.verify(token, process.env.JWT_KEY, {
-			// issuer: "api.tecmamovilconnect.com",
-			// audience: "tecmamovil",
 			clockTolerance: 5,
 		});
-		console.log("Token verified successfully");
-
-		console.log("Token payload is: ", payload);
 
 		if (!payload.empId || !payload.region) {
-			throw new Error("Invalid token: missing empId or region");
+			console.log("Invalid mobile token");
+			throw new Error("Invalid mobile token");
 		}
-		// Expecting: { empId, region, iat, exp }
-		return { empId: payload.empId, region: payload.region };
-	} catch {
-		return null; // <-- do NOT throw; keep requests public if desired
+
+		return {
+			type: "user",
+			empId: payload.empId,
+			region: payload.region
+		};
+
+	} catch (error) {
+		console.log("Error occurred while verifying mobile token:", error);
 	}
+
+	/* -------------------------
+	   2️⃣ Try CSA service token
+	------------------------- */
+
+	try {
+		console.log("Trying service token");
+		const payload = jwt.verify(
+			token,
+			process.env.CSA_SERVICE_SECRET
+		);
+
+		if (!payload.scope)
+			throw new Error("Invalid service token");
+
+		console.log("Service token valid with data: ", payload);
+		return {
+			type: "service",
+			scope: payload.scope,
+			sub: payload.sub
+		};
+
+	} catch (error) {
+		console.log("Error occurred while verifying service token:", error);
+	}
+	console.log("No valid token found, returning null user");
+	return null;
 }
 
 const app = express();
@@ -95,6 +133,7 @@ console.log("Applying middleware");
 
 // Middleware to authenticate JWT token
 app.use((req, _res, next) => {
+	console.log("Received request for:", req.path);
 	req.user = getUserFromAuthHeader(req); // may be null if no/invalid token
 	next();
 });
@@ -177,6 +216,58 @@ app.get("/download/notification", (req, res) => {
 	}
 });
 
+app.get("/download/loan", async (req, res) => {
+
+	try {
+		console.log("Received loan download request with query:", req.query);
+		const { token } = req.query;
+
+		if (!token)
+			return res.status(400).json({ message: "Missing token" });
+
+		let decoded;
+
+
+		try {
+			decoded = jwt.verify(token, process.env.FILE_DOWNLOAD_SECRET);
+			console.log("Decoded data: ", decoded)
+		} catch (err) {
+			return res.status(403).json({ message: "Invalid or expired token" });
+		}
+
+		if (decoded.scope !== "loan_download")
+			return res.status(403).json({ message: "Invalid scope" });
+
+		const result = await executeParameterizedQuery(`
+			SELECT pdf_relative_path
+			FROM Loans
+			WHERE loan_id = @param1
+		`, [decoded.loan_id], "Error fetching Loan PDF relative path", "tecmamovilcentral");
+
+		if (!result.length)
+			return res.status(404).json({ message: "Loan not found" });
+
+		const filePath = path.normalize(
+			path.join(process.cwd(), result[0].pdf_relative_path)
+		);
+
+		if (!fs.existsSync(filePath))
+			return res.status(404).json({ message: "File not found" });
+
+		res.download(filePath);
+
+	} catch (err) {
+
+		console.error("Loan download error:", err);
+
+		res.status(403).json({
+			message: "Invalid or expired download token"
+		});
+
+	}
+
+});
+
 console.log("Creating server");
 const apolloServer = new ApolloServer({
 	typeDefs,
@@ -184,13 +275,15 @@ const apolloServer = new ApolloServer({
 	playground: false,
 	plugins: [
 		...(process.env.HOST === "DEV"
-			? [ApolloServerPluginLandingPageDisabled()]
-			: []),
+			// ? []
+			? []
+			: [ApolloServerPluginLandingPageDisabled()]),
 	],
 	context: async ({ req }) => {
 		// const pools = await Promise.all(Object.values(poolPromises));
 		const pools = {};
-		return { pools, user: req.user };
+		// console.log("Context created with user:", req);
+		return { pools, user: req.user, req };
 	},
 });
 

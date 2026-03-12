@@ -40,6 +40,7 @@ const { DateTime } = require("luxon");
 const { enc } = require("crypto-js");
 const { requireAuth } = require("../../utils/auth");
 const { poolPromises, sql } = require("../../config/dbConfig");
+const { requireServiceAuth } = require("../../utils/serviceAuth");
 
 // const secretKey = process.env.NEW_KEY;
 
@@ -1730,6 +1731,7 @@ const resolvers = {
 								FROM K_Solicitudes
 								WHERE Fecha >= @StartDate
 								AND Fecha < @EndDate
+								AND Carta = 'PtmoFA'
 								AND No = ${empId}
 							)
 							THEN 'true'
@@ -1941,6 +1943,111 @@ const resolvers = {
 			}
 
 		}),
+		downloadLoanFileInternal: requireServiceAuth("loans:read")(
+			async (_, { loan_id }) => {
+				try {
+
+					if (!loan_id)
+						throw new Error("loan_id required");
+
+					const result = await executeParameterizedQuery(
+						`
+        SELECT 
+            pdf_relative_path,
+            employee_id,
+            requested_at
+        FROM Loans
+        WHERE loan_id = @loan_id
+        `,
+						[
+							{ name: "loan_id", type: sql.Int, value: loan_id }
+						]
+					);
+
+					if (!result.length)
+						throw new Error("Loan not found");
+
+					const loan = result[0];
+
+					const filePath = path.join(
+						process.cwd(),
+						loan.pdf_relative_path
+					);
+
+					if (!fs.existsSync(filePath))
+						throw new Error("Loan file not found");
+
+					const fileBuffer = fs.readFileSync(filePath);
+
+					/* -----------------------------
+					   Generate better filename
+					----------------------------- */
+
+					const timestamp = DateTime.fromJSDate(loan.requested_at)
+						.toFormat("yyyyLLddHHmm");
+
+					const filename = `Prestamo_${loan.employee_id}_${timestamp}.pdf`;
+
+					return {
+						success: true,
+						filename,
+						file: fileBuffer.toString("base64")
+					};
+
+				} catch (error) {
+
+					console.error("Loan file download error:", error);
+					throw new Error("Failed to download loan file");
+
+				}
+			}
+		),
+		RequestLoanDownloadURL: requireServiceAuth("loans:read")(
+			async (_, { loan_id }) => {
+				console.log("Requesting download URL for loan_id: ", loan_id);
+
+				try {
+					const result = await executeParameterizedQuery(`
+						SELECT pdf_relative_path
+						FROM Loans
+						WHERE loan_id = @param1
+					`, [loan_id], "Error fetching Loan relative path", "tecmamovilcentral");
+
+					console.log("Result is: ", result)
+
+					if (!result.length)
+						return {
+							success: false,
+							message: "Loan not found"
+						};
+					const token = jwt.sign(
+						{
+							loan_id,
+							scope: "loan_download"
+						},
+						process.env.FILE_DOWNLOAD_SECRET,
+						{
+							expiresIn: "60s"
+						}
+					);
+
+					const download_url = `${process.env.TMC_API_BASE}/download/loan?token=${token}`
+					console.log("Download URL is: ", download_url)
+					return {
+						success: true,
+						message: "File found and URL retrieved",
+						download_url
+					};
+				} catch (error) {
+					console.log("Error generating loan download URL: ", error);
+					return {
+						success: false,
+						message: "Error generating download URL"
+					};
+				}
+
+			}
+		)
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
