@@ -124,10 +124,10 @@ const resolvers = {
 				"Error fetching version information",
 				"tecmamovilcentral",
 			);
-			console.log("Versiones: ", versiones);
+			// console.log("Versiones: ", versiones);
 			if (versiones.length > 0) {
 				const important = versiones.some((version) => version.relevancia >= 3);
-				console.log("Relevance status: ", important);
+				// console.log("Relevance status: ", important);
 				return { upToDate: false, critical: important };
 			}
 			return { upToDate: true, critical: false };
@@ -236,7 +236,7 @@ const resolvers = {
 			// 	);
 			// }
 
-			console.log("Restricted sections: ", restrictedSections);
+			// console.log("Restricted sections: ", restrictedSections);
 
 			// Register log in to K_Log
 			// await executeQuery(
@@ -635,7 +635,7 @@ const resolvers = {
 				"Error fetching bloqueo information",
 				dbs.colabora,
 			);
-			console.log("Recibos a retornar: ", recibos);
+			// console.log("Recibos a retornar: ", recibos);
 			// const recibos = recibosQuery.recordset;
 			// console.log("Recibos: ", recibosQuery);
 			return recibos;
@@ -956,7 +956,7 @@ const resolvers = {
 				dbs.kioskotek,
 			);
 
-			console.log("Respuestas: ", answers);
+			// console.log("Respuestas: ", answers);
 			// Transform the questions array
 			const updatedQuestions = questions.map((question) => {
 				// Find the matching answer by tipo
@@ -2141,7 +2141,7 @@ const resolvers = {
 
 			const userData = queryNip[0];
 
-			console.log("User data is: ", JSON.stringify(userData, null, 1));
+			// console.log("User data is: ", JSON.stringify(userData, null, 1));
 			if (!userData) {
 				return {
 					success: false,
@@ -2159,11 +2159,11 @@ const resolvers = {
 			let isAuthorized = false;
 
 			if (userData.ENCRIPTADA) {
-				console.log("Encriptada is true");
+				// console.log("Encriptada is true");
 				const decryptedPassword = decryptOld(userData.NIP, oldKey);
 
 				if (nip === decryptedPassword) {
-					console.log("Encrypted nip matches ");
+					// console.log("Encrypted nip matches ");
 					isAuthorized = true;
 				}
 			} else {
@@ -2230,6 +2230,7 @@ const resolvers = {
 				},
 			);
 
+			console.log("User: ", numEmp, " logged in to region: ", region);
 			return {
 				success: true,
 				message: "Login successful",
@@ -2636,7 +2637,7 @@ const resolvers = {
 					loan_weeks,
 				};
 				const dbs = await selectRegion(region);
-				console.log("Data values: ", JSON.stringify(data, null, 1));
+				// console.log("Data values: ", JSON.stringify(data, null, 1));
 				// if (letter === "PtmoFA") {
 				// 	console.log("Letter is PtmoFA");
 				// 	return { pdfFile: "Wait" };

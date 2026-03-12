@@ -17,12 +17,12 @@ const { executeParameterizedQuery } = require("./utils/dbUtils");
 
 function getUserFromAuthHeader(req) {
 
-	console.log("Extracting user from auth header");
+	// console.log("Extracting user from auth header");
 	const auth = req.headers.authorization || "";
 	const [scheme, token] = auth.split(" ");
 
 	if ((scheme || "").toLowerCase() !== "bearer" || !token) {
-		console.log("Invalid authorization header");
+		// console.log("Invalid authorization header");
 		return null;
 	}
 
@@ -31,14 +31,14 @@ function getUserFromAuthHeader(req) {
 	------------------------- */
 
 	try {
-		console.log("Trying mobile token");
+		// console.log("Trying mobile token");
 
 		const payload = jwt.verify(token, process.env.JWT_KEY, {
 			clockTolerance: 5,
 		});
 
 		if (!payload.empId || !payload.region) {
-			console.log("Invalid mobile token");
+			// console.log("Invalid mobile token");
 			throw new Error("Invalid mobile token");
 		}
 
@@ -49,7 +49,7 @@ function getUserFromAuthHeader(req) {
 		};
 
 	} catch (error) {
-		console.log("Error occurred while verifying mobile token:", error);
+		// console.log("Error occurred while verifying mobile token:", error);
 	}
 
 	/* -------------------------
@@ -57,7 +57,7 @@ function getUserFromAuthHeader(req) {
 	------------------------- */
 
 	try {
-		console.log("Trying service token");
+		// console.log("Trying service token");
 		const payload = jwt.verify(
 			token,
 			process.env.CSA_SERVICE_SECRET
@@ -66,7 +66,7 @@ function getUserFromAuthHeader(req) {
 		if (!payload.scope)
 			throw new Error("Invalid service token");
 
-		console.log("Service token valid with data: ", payload);
+		// console.log("Service token valid with data: ", payload);
 		return {
 			type: "service",
 			scope: payload.scope,
@@ -74,9 +74,9 @@ function getUserFromAuthHeader(req) {
 		};
 
 	} catch (error) {
-		console.log("Error occurred while verifying service token:", error);
+		// console.log("Error occurred while verifying service token:", error);
 	}
-	console.log("No valid token found, returning null user");
+	// console.log("No valid token found, returning null user");
 	return null;
 }
 
@@ -133,7 +133,7 @@ console.log("Applying middleware");
 
 // Middleware to authenticate JWT token
 app.use((req, _res, next) => {
-	console.log("Received request for:", req.path);
+	// console.log("Received request for:", req.path);
 	req.user = getUserFromAuthHeader(req); // may be null if no/invalid token
 	next();
 });
@@ -219,7 +219,6 @@ app.get("/download/notification", (req, res) => {
 app.get("/download/loan", async (req, res) => {
 
 	try {
-		console.log("Received loan download request with query:", req.query);
 		const { token } = req.query;
 
 		if (!token)
@@ -230,7 +229,7 @@ app.get("/download/loan", async (req, res) => {
 
 		try {
 			decoded = jwt.verify(token, process.env.FILE_DOWNLOAD_SECRET);
-			console.log("Decoded data: ", decoded)
+			console.log("Decoded data for loan download: ", decoded)
 		} catch (err) {
 			return res.status(403).json({ message: "Invalid or expired token" });
 		}
@@ -239,25 +238,52 @@ app.get("/download/loan", async (req, res) => {
 			return res.status(403).json({ message: "Invalid scope" });
 
 		const result = await executeParameterizedQuery(`
-			SELECT pdf_relative_path
+			SELECT pdf_relative_path, employee_id, requested_at
 			FROM Loans
 			WHERE loan_id = @param1
 		`, [decoded.loan_id], "Error fetching Loan PDF relative path", "tecmamovilcentral");
 
-		if (!result.length)
+		console.log("Result pdf relative path is: ", result)
+
+		if (!result.length) {
+			console.log("Loan was not found in DB")
 			return res.status(404).json({ message: "Loan not found" });
+		}
+
+		const loan = result[0];
+
+		const date = new Date(loan.requested_at);
+
+		const YYYY = date.getFullYear();
+		const MM = String(date.getMonth() + 1).padStart(2, "0");
+		const DD = String(date.getDate()).padStart(2, "0");
+		const HH = String(date.getHours()).padStart(2, "0");
+		const mm = String(date.getMinutes()).padStart(2, "0");
+
+		const timestamp = `${YYYY}${MM}${DD}${HH}${mm}`;
+
+		const downloadFilename = `Prestamo_${loan.employee_id}_${timestamp}.pdf`;
+
+		const publicDir = path.join(process.cwd(), "public");
 
 		const filePath = path.normalize(
-			path.join(process.cwd(), result[0].pdf_relative_path)
+			path.join(publicDir, loan.pdf_relative_path)
 		);
 
-		if (!fs.existsSync(filePath))
-			return res.status(404).json({ message: "File not found" });
+		if (!filePath.startsWith(publicDir)) {
+			return res.status(403).json({ message: "Invalid file path" });
+		}
 
-		res.download(filePath);
+		if (!fs.existsSync(filePath)) {
+			console.log("File not found in directory");
+			return res.status(404).json({ message: "File not found" });
+		}
+
+		console.log("Downloading loan:", downloadFilename);
+
+		res.download(filePath, downloadFilename);
 
 	} catch (err) {
-
 		console.error("Loan download error:", err);
 
 		res.status(403).json({
