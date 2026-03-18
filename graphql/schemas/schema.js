@@ -468,9 +468,15 @@ const typeDefs = gql`
 		download_url: String
 	}
 
+	input VersionInput {
+		currVer: String!
+		platform: String!
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
+		Version(input: VersionInput!): version
 		Versions(currVer: String!): version
 		UserFind(numEmp: String!, region: String!): UserFind
 		ImageBlob(numEmp: String!, region: String!): ImageBlob

@@ -117,6 +117,112 @@ const resolvers = {
 				message: `Se inicio sesión correctamente para ${name.CB_NOMBRES}`,
 			};
 		},
+		Version: async (_, { input }) => {
+			const parseVersion = (value) => {
+				if (typeof value !== "string") return null;
+
+				const raw = value.trim().toLowerCase();
+
+				// Allows: 1.1.5 or 1.1.5dev
+				if (!/^\d+\.\d+\.\d+(dev)?$/.test(raw)) {
+					return null;
+				}
+
+				const isDev = raw.endsWith("dev");
+				const numericPart = isDev ? raw.slice(0, -3) : raw;
+
+				const [major, minor, patch] = numericPart.split(".").map(Number);
+
+				return {
+					raw,
+					isDev,
+					numericPart,
+					major,
+					minor,
+					patch,
+				};
+			};
+
+			const compareVersions = (a, b) => {
+				if (a.major !== b.major) return a.major - b.major;
+				if (a.minor !== b.minor) return a.minor - b.minor;
+				if (a.patch !== b.patch) return a.patch - b.patch;
+
+				// Same numeric version:
+				// treat 1.1.5 and 1.1.5dev as equivalent for update checks
+				return 0;
+			};
+
+			try {
+				console.log("Input is:", input);
+
+				if (!input || typeof input !== "object") {
+					throw new Error("Invalid input.");
+				}
+
+				let { currVer, platform } = input;
+
+				platform = String(platform || "").trim().toLowerCase();
+				currVer = String(currVer || "").trim();
+
+				if (!["ios", "android"].includes(platform)) {
+					throw new Error("Invalid platform.");
+				}
+
+				const parsedCurrent = parseVersion(currVer);
+				if (!parsedCurrent) {
+					throw new Error(
+						"Invalid currVer format. Expected values like 1.1.5 or 1.1.5dev."
+					);
+				}
+
+				const versiones = await executeParameterizedQuery(
+					`
+					SELECT id_version, relevancia, fecha, notas, platform
+					FROM Versiones
+					WHERE platform IN (@param1, 'all')
+					ORDER BY fecha DESC
+			`,
+					[platform],
+					"Error fetching version information",
+					"tecmamovilcentral",
+				);
+
+				console.log("Result is: ", versiones)
+
+				if (!versiones.length) {
+					return { upToDate: true, critical: false };
+				}
+
+				const newerVersions = versiones.filter((row) => {
+					const parsedDbVersion = parseVersion(String(row.id_version || "").trim());
+
+					// Ignore malformed DB rows instead of crashing
+					if (!parsedDbVersion) return false;
+
+					return compareVersions(parsedDbVersion, parsedCurrent) > 0;
+				});
+
+				if (newerVersions.length > 0) {
+					const important = newerVersions.some(
+						(version) => Number(version.relevancia) >= 3
+					);
+
+					return {
+						upToDate: false,
+						critical: important,
+					};
+				}
+
+				return {
+					upToDate: true,
+					critical: false,
+				};
+			} catch (error) {
+				console.error("Version resolver error:", error);
+				throw error;
+			}
+		},
 		Versions: async (_, { currVer }) => {
 			const versiones = await executeQuery(
 				`SELECT * FROM Versiones
