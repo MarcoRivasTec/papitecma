@@ -281,8 +281,8 @@ const typeDefs = gql`
 	}
 
 	type ResponseRequests {
-		success: Boolean! 
-		message: String! 
+		success: Boolean!
+		message: String!
 		data: [Request]
 	}
 
@@ -314,7 +314,7 @@ const typeDefs = gql`
 		end_date: Date
 		request_date: DateTime!
 		total_days: Int!
-		motive : String
+		motive: String
 		comment: String
 		pre_approved_by: String
 		pre_approval_date: DateTime
@@ -350,7 +350,7 @@ const typeDefs = gql`
 	input GenerateVacationCertificateInput {
 		numEmp: String!
 		region: String!
-		signature: String!  # base64-encoded PNG
+		signature: String! # base64-encoded PNG
 	}
 
 	type GenerateVacationCertificateResponse {
@@ -417,6 +417,35 @@ const typeDefs = gql`
 		message: String!
 	}
 
+	type LoanDataResponse {
+		success: Boolean!
+		message: String!
+		data: LoanData
+	}
+
+	type LoanData {
+		isAllowed: Boolean!
+		reason: String
+		balance: Float!
+		minAmount: Float!
+		maxAmount: Float!
+		maxWeeks: Int!
+		interestRate: Float!
+		loanStatus: String
+		cycle: LoanCycle
+		serverNow: String!
+	}
+
+	type LoanCycle {
+		startDate: String!
+		endDate: String!
+	}
+
+	input RequestLoanInput {
+		amount: Float!
+		weeks: Int!
+	}
+
 	type ResponseBadgeData {
 		success: Boolean!
 		message: String!
@@ -425,6 +454,18 @@ const typeDefs = gql`
 
 	type BadgeData {
 		format: String!
+	}
+
+	type LoanFileResponse {
+		success: Boolean!
+		filename: String
+		file: String
+	}
+
+	type LoanURLFileResponse {
+		success: Boolean!
+		message: String
+		download_url: String
 	}
 
 	type Query {
@@ -473,13 +514,22 @@ const typeDefs = gql`
 		ComplaintInfo(region: String!): ResponseComplaintData!
 		Notifications: [Notification]
 		NotificationFileUrl(notificationId: ID!, fileId: ID!): NotificationFileUrl!
+		LoanData: LoanDataResponse!
 		BadgeData: ResponseBadgeData!
+
+		downloadLoanFileInternal(loan_id: Int!): LoanFileResponse
+		RequestLoanDownloadURL(loan_id: Int!): LoanURLFileResponse
 	}
 
 	type Mutation {
 		login(numEmp: String!, nip: String!, region: String!): ResponseLogin!
 		mockLogin(numEmpList: [String!]!, region: String!): [LoginStatus!]!
-		resetNIP(numEmp: String!, rfc: String!, newNIP: String!, region: String!): String!
+		resetNIP(
+			numEmp: String!
+			rfc: String!
+			newNIP: String!
+			region: String!
+		): String!
 		addFamilyMember(
 			numEmp: String!
 			region: String!
@@ -533,9 +583,12 @@ const typeDefs = gql`
 		requestQRData(input: QRInput!): ResponseData!
 		requestAbsence(input: RequestAbsenceInput!): Response!
 		handleAbsenceRequest(input: HandleAbsenceRequestInput!): Response!
-		generateVacationCertificate(input: GenerateVacationCertificateInput!): GenerateVacationCertificateResponse!
+		generateVacationCertificate(
+			input: GenerateVacationCertificateInput!
+		): GenerateVacationCertificateResponse!
 		handleCheckIn(input: HandleCheckInInput!): HandleCheckInResponse!
 		assignSurveys(input: AssignSurveysInput!): AssignSurveysResponse!
+		requestLoan(input: RequestLoanInput!): Response!
 		testMutation: String
 	}
 `;

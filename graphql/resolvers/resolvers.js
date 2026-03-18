@@ -2,6 +2,7 @@ const {
 	executeQuery,
 	executeParameterizedQuery,
 	executeQueryNew,
+	executeParameterizedQueryTx,
 } = require("../../utils/dbUtils");
 const jwt = require("jsonwebtoken");
 const { decryptOld, encryptOld, encrypt } = require("../../utils/decryption");
@@ -17,7 +18,7 @@ const {
 	returnCredStatus,
 	returnCredType,
 } = require("../../utils/returners");
-const { json } = require("express");
+// const { json } = require("express");
 const {
 	generateLetterPDF,
 	generatePayrollPDF,
@@ -38,6 +39,9 @@ const Numalet = require("numalet");
 const { DateTime } = require("luxon");
 const { enc } = require("crypto-js");
 const { requireAuth } = require("../../utils/auth");
+const { poolPromises, sql } = require("../../config/dbConfig");
+const { requireServiceAuth } = require("../../utils/serviceAuth");
+
 // const secretKey = process.env.NEW_KEY;
 
 const selectRegion = async (region) => {
@@ -88,7 +92,7 @@ const resolvers = {
 			const queryNip = await executeQuery(
 				`SELECT CB_CODIGO, NIP FROM Empleados WHERE CB_CODIGO = '${numEmp}'`,
 				"Error fetching user credentials",
-				"kioskocentral"
+				"kioskocentral",
 			);
 			const userData = queryNip[0];
 
@@ -96,14 +100,14 @@ const resolvers = {
 
 			if (!userData || nip !== decryptedPassword) {
 				throw new Error(
-					"El usuario no existe o las credenciales son inválidas"
+					"El usuario no existe o las credenciales son inválidas",
 				);
 			}
 
 			const queryName = await executeQuery(
 				`SELECT CB_NOMBRES FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
 				"Error fetching user credentials",
-				dbs.colabora
+				dbs.colabora,
 			);
 			const name = queryName[0];
 
@@ -118,12 +122,12 @@ const resolvers = {
 				`SELECT * FROM Versiones
 					WHERE fecha > (SELECT fecha FROM Versiones WHERE id_version = '${currVer}')`,
 				"Error fetching version information",
-				"tecmamovilcentral"
+				"tecmamovilcentral",
 			);
-			console.log("Versiones: ", versiones);
+			// console.log("Versiones: ", versiones);
 			if (versiones.length > 0) {
 				const important = versiones.some((version) => version.relevancia >= 3);
-				console.log("Relevance status: ", important);
+				// console.log("Relevance status: ", important);
 				return { upToDate: false, critical: important };
 			}
 			return { upToDate: true, critical: false };
@@ -136,7 +140,7 @@ const resolvers = {
 				From Empleados
 				Where CB_CODIGO = '${numEmp}'`,
 				"Error fetching user information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 			const decrypted = decryptOld(query[0].nip, oldKey);
 			console.log("NIP is: ", decrypted);
@@ -151,7 +155,7 @@ const resolvers = {
 				where CB_CODIGO = '${numEmp}' 
 				And IM_TIPO = 'FOTO' `,
 				"Error fetching image blob information",
-				dbs.colabora
+				dbs.colabora,
 			);
 			// console.log("Blob: ", query);
 			return query[0];
@@ -208,26 +212,31 @@ const resolvers = {
 				left join TPERIODO as T on CB.CB_NOMINA = T.TP_TIPO
 				where CB.CB_CODIGO = '${numEmp}'`,
 				"Error fetching user info",
-				dbs.colabora
+				dbs.colabora,
 			);
 
-			const restrictedSections = await executeQuery(`
-				SELECT DISTINCT s.section_name
-				FROM MenuAccessRestrictions AS mar
-				INNER JOIN Sections AS s ON mar.section_id = s.section_id
-				LEFT JOIN Regions AS r ON mar.region_id = r.region_id
-				WHERE 
-					mar.is_active = 1
-					AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
-					AND (mar.region_id IS NULL OR r.region_code = '${region}')
-					AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
-					AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
-					AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
-					AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
-				"Error fetching restricted sections for user",
-				"tecmamovilcentral")
+			let restrictedSections = [];
+			// if (numEmp !== "900874") {
+			// 	restrictedSections = await executeQuery(
+			// 		`
+			// 	SELECT DISTINCT s.section_name
+			// 	FROM MenuAccessRestrictions AS mar
+			// 	INNER JOIN Sections AS s ON mar.section_id = s.section_id
+			// 	LEFT JOIN Regions AS r ON mar.region_id = r.region_id
+			// 	WHERE 
+			// 		mar.is_active = 1
+			// 		AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
+			// 		AND (mar.region_id IS NULL OR r.region_code = '${region}')
+			// 		AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
+			// 		AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
+			// 		AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
+			// 		AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
+			// 		"Error fetching restricted sections for user",
+			// 		"tecmamovilcentral",
+			// 	);
+			// }
 
-			console.log("Restricted sections: ", restrictedSections);
+			// console.log("Restricted sections: ", restrictedSections);
 
 			// Register log in to K_Log
 			// await executeQuery(
@@ -245,7 +254,12 @@ const resolvers = {
 			// );
 			// console.log("Info: ", JSON.stringify(userInfo, null, 1));
 			// return userInfo[0];
-			return { ...userInfo[0], restricted_sections: restrictedSections.map(section => section.section_name) };
+			return {
+				...userInfo[0],
+				restricted_sections: restrictedSections.map(
+					(section) => section.section_name,
+				),
+			};
 			// return {
 			// 	apellido_mat: returnValue(query[0].CB_APE_MAT),
 			// 	apellido_pat: returnValue(query[0].CB_APE_PAT),
@@ -289,7 +303,7 @@ const resolvers = {
 				left join EDOCIVIL as E on C.CB_EDO_CIV = E.TB_CODIGO
 				where C.CB_CODIGO = '${numEmp}'`,
 				"Error fetching personal information",
-				dbs.colabora
+				dbs.colabora,
 			);
 			const familiaresQuery = await executeQuery(
 				`SELECT Nombre
@@ -301,7 +315,7 @@ const resolvers = {
 				Where No = '${numEmp}'
 				And Borrado = 0`,
 				"Error fetching familiares information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 			const tallasQuery = await executeQuery(
 				`WITH RankedEntries AS (
@@ -322,7 +336,7 @@ const resolvers = {
 				FROM RankedEntries
 				WHERE rn = 1`,
 				"Error fetching tallas information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			const availableTallasQuery = await executeQuery(
@@ -332,7 +346,7 @@ const resolvers = {
 				FROM TMedidas
 				Where Genero = '${generalQuery[0].SEXO}' OR Genero = 'G'`,
 				"Error fetching available tallas information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			const familiaresArray = familiaresQuery.map((row) => ({
@@ -423,7 +437,7 @@ const resolvers = {
 				left join CLASIFI as CL on CB.CB_CLASIFI = CL.TB_CODIGO
 				where CB.CB_CODIGO = '${numEmp}'`,
 				"Error fetching area information",
-				dbs.colabora
+				dbs.colabora,
 			);
 			return {
 				puesto: returnValue(query[0].PUESTO),
@@ -460,7 +474,7 @@ const resolvers = {
 						CB_V_GOZO as TOMADOS
 				From COLABORA Where CB_CODIGO = '${numEmp}'`,
 				"Error fetching vacaciones information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			let ingreso = new Date(query[0].DIASANIV);
@@ -469,7 +483,7 @@ const resolvers = {
 			let anniversary = new Date(
 				today.getFullYear(),
 				ingreso.getMonth(),
-				ingreso.getDate()
+				ingreso.getDate(),
 			);
 
 			if (today > anniversary) {
@@ -477,7 +491,7 @@ const resolvers = {
 			}
 
 			let remainingDays = Math.ceil(
-				(anniversary - today) / (1000 * 60 * 60 * 24)
+				(anniversary - today) / (1000 * 60 * 60 * 24),
 			);
 			console.log("Data retrieved: ", query[0]);
 			// console.log("Remaining days: ", remainingDays);
@@ -495,7 +509,7 @@ const resolvers = {
 					disponibles: returnValue(
 						(
 							parseFloat(query[0].GANADOS) - parseFloat(query[0].TOMADOS)
-						).toFixed(2)
+						).toFixed(2),
 					),
 				},
 			};
@@ -518,7 +532,7 @@ const resolvers = {
 				Order by 
 					VA_FEC_INI Desc`,
 				"Error fetching historial vacaciones information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			const yearly = query.map((row, index) => ({
@@ -544,7 +558,7 @@ const resolvers = {
 				Order by 
 					YEAR Desc`,
 				"Error fetching historial years information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			const years = query.map((row, index) => ({
@@ -575,7 +589,7 @@ const resolvers = {
 				Where 
 					AH.CB_CODIGO = '${numEmp}'`,
 				"Error fetching fondo de ahorro information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			return {
@@ -593,10 +607,10 @@ const resolvers = {
 				And Anio = '${year}'
 				And Fecha >= GetDate()`,
 				"Error fetching bloqueo information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 			const periodosBloqueoArray = queryPeriodosBloqueo.map(
-				(row) => row.Periodo
+				(row) => row.Periodo,
 			);
 			const periodosBloqueo = periodosBloqueoArray.join(", ");
 
@@ -619,9 +633,9 @@ const resolvers = {
 				${periodosBloqueo !== "" ? `And NOM.PE_NUMERO Not In (${periodosBloqueo})` : ""}
 				Order by NOM.PE_NUMERO Desc`,
 				"Error fetching bloqueo information",
-				dbs.colabora
+				dbs.colabora,
 			);
-			console.log("Recibos a retornar: ", recibos);
+			// console.log("Recibos a retornar: ", recibos);
 			// const recibos = recibosQuery.recordset;
 			// console.log("Recibos: ", recibosQuery);
 			return recibos;
@@ -634,7 +648,7 @@ const resolvers = {
 				Where CB_CODIGO = '${numEmp}'
 				Order by Year Desc`,
 				"Error fetching bloqueo information",
-				dbs.colabora
+				dbs.colabora,
 			);
 			return query;
 		},
@@ -675,7 +689,7 @@ const resolvers = {
 				Order by
 					NOM.PE_NUMERO Desc`,
 				"Error fetching prenomina week information",
-				dbs.colabora
+				dbs.colabora,
 			);
 			// console.log("Statement: ", periodos);
 			// const recibos = recibosQuery.recordset;
@@ -701,7 +715,7 @@ const resolvers = {
 				Order by
 					NOM.PE_YEAR Desc`,
 				"Error fetching prenominas years information",
-				dbs.colabora
+				dbs.colabora,
 			);
 			// console.log("Years: ", typeof years.);
 			return years;
@@ -746,7 +760,7 @@ const resolvers = {
 				Order By
 					dia;`,
 				"Error fetching prenomina days information",
-				dbs.colabora
+				dbs.colabora,
 			);
 			return dias;
 		},
@@ -783,7 +797,7 @@ const resolvers = {
 												AND AH_STATUS = 0 
 												AND AH_TIPO = '2');`,
 				"Error fetching balance and existing loan",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			// const prestamoKiosko = await executeQuery(
@@ -815,7 +829,7 @@ const resolvers = {
 				FROM Prestamos
 				ORDER BY fecha DESC;`,
 				"Error fetching prestamo weeks information",
-				dbs.tecmamovil
+				"tecmamovilcentral",
 			);
 
 			const now = DateTime.now().setZone("America/Denver");
@@ -833,7 +847,7 @@ const resolvers = {
 					// Start from January 1st
 					let first_day = DateTime.fromObject(
 						{ year, month: 1, day: 1 },
-						{ zone }
+						{ zone },
 					);
 
 					// Find the first Saturday
@@ -882,7 +896,7 @@ const resolvers = {
 				prestamo: prestamo[0].PrestamoExists === "true" ? true : false,
 				initial_week: prestamo_weeks[0].initial_week,
 				final_week: prestamo_weeks[0].final_week,
-				max_weeks: 30
+				max_weeks: 30,
 			};
 		},
 		Encuestas: async (_, { numEmp, region }) => {
@@ -909,7 +923,7 @@ const resolvers = {
 				Order By
 					KEnc.Encuesta`,
 				"Error fetching encuestas information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 			// return encuestas;
 			// const encuestas1 = [{}, {}, {}, {}];
@@ -923,7 +937,7 @@ const resolvers = {
 				From
 					CSC_TRespuesta`,
 				"Error fetching respuestas information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			const questions = await executeQuery(
@@ -939,15 +953,15 @@ const resolvers = {
 				Order By
 					Codigo Asc`,
 				"Error fetching preguntas information",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
-			console.log("Respuestas: ", answers);
+			// console.log("Respuestas: ", answers);
 			// Transform the questions array
 			const updatedQuestions = questions.map((question) => {
 				// Find the matching answer by tipo
 				const matchingAnswer = answers.find(
-					(answer) => answer.Tipo === question.tipo
+					(answer) => answer.Tipo === question.tipo,
 				);
 
 				// console.log("Matching is ", matchingAnswer);
@@ -993,7 +1007,7 @@ const resolvers = {
 						icono_ref_4 as icon_ref_4
 					From Polizas`,
 					"Error querying policies",
-					dbs.tecmamovil
+					dbs.tecmamovil,
 				);
 
 				console.log("Polizas: ", policies);
@@ -1161,8 +1175,8 @@ const resolvers = {
 					Where
 						TB_CODIGO = '${project}'`,
 					"Error",
-					dbs.colabora
-				)
+					dbs.colabora,
+				),
 			);
 
 			// Wait for all queries to complete
@@ -1190,21 +1204,20 @@ const resolvers = {
 						ELSE CAST(0 AS BIT)
 					END AS match;`,
 				"Error fetching supervisor information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			if (isSupervisor && isSupervisor[0].match) {
-				return { success: true, message: "User is a superior" }
+				return { success: true, message: "User is a superior" };
 			} else {
-
-				return { success: false, message: "User is not a superior" }
+				return { success: false, message: "User is not a superior" };
 			}
 
 			// const isSupervisor = await executeQuery(
-			// 	`SELECT 
-			// 		CASE 
+			// 	`SELECT
+			// 		CASE
 			// 			WHEN EXISTS (
-			// 				SELECT 1 
+			// 				SELECT 1
 			// 				FROM NIVEL3
 			// 				WHERE TB_NUMERO = ${numEmp}
 			// 			)
@@ -1261,7 +1274,6 @@ const resolvers = {
 			// } else {
 			// 	return { success: false, message: "Done" }
 			// }
-
 		},
 		SuperiorRequests: async (_, { numEmp, region }) => {
 			const dbs = await selectRegion(region);
@@ -1280,7 +1292,7 @@ const resolvers = {
 			const motives = await executeQuery(
 				`SELECT * FROM motivos_solicitud`,
 				"Error fetching motives information",
-				dbs.tecmamovil
+				dbs.tecmamovil,
 			);
 
 			// console.log("\nMotives: ", motives)
@@ -1288,7 +1300,7 @@ const resolvers = {
 			const statuses = await executeQuery(
 				`SELECT * FROM estados_solicitud`,
 				"Error fetching statuses information",
-				dbs.tecmamovil
+				dbs.tecmamovil,
 			);
 
 			// console.log("\Statuses: ", statuses)
@@ -1316,25 +1328,25 @@ const resolvers = {
 					FROM solicitudes_ausencia
 					WHERE autoriza = '${numEmp}'`,
 				"Error fetching supervisor information",
-				dbs.tecmamovil
+				dbs.tecmamovil,
 			);
 
-			console.warn("\n\nSupervisor requests: ", supervisorRequests)
+			console.warn("\n\nSupervisor requests: ", supervisorRequests);
 
 			// Create maps for fast lookup
 			const motiveMap = {};
 			const statusMap = {};
 
-			motives.forEach(m => motiveMap[m.id_motivo] = m.descripcion);
-			statuses.forEach(s => statusMap[s.id_estado] = s.descripcion);
+			motives.forEach((m) => (motiveMap[m.id_motivo] = m.descripcion));
+			statuses.forEach((s) => (statusMap[s.id_estado] = s.descripcion));
 
 			// Replace codes with descriptions
-			const formattedRequests = supervisorRequests.map(request => ({
+			const formattedRequests = supervisorRequests.map((request) => ({
 				...request,
-				motive: request.motive_id !== null ? motiveMap[request.motive_id] : null,
-				status: statusMap[request.status]
+				motive:
+					request.motive_id !== null ? motiveMap[request.motive_id] : null,
+				status: statusMap[request.status],
 			}));
-
 
 			// Create a cache for employee names to avoid repeated queries
 			const employeeNameCache = {};
@@ -1349,12 +1361,13 @@ const resolvers = {
 						FROM COLABORA 
 						WHERE CB_CODIGO = '${request.numEmp}'`,
 						"Error fetching user name info",
-						dbs.colabora
+						dbs.colabora,
 					);
 
 					if (userFullName && userFullName.length > 0) {
 						const { names, surname_1, surname_2 } = userFullName[0];
-						employeeNameCache[request.numEmp] = `${names} ${surname_1} ${surname_2}`;
+						employeeNameCache[request.numEmp] =
+							`${names} ${surname_1} ${surname_2}`;
 					} else {
 						employeeNameCache[request.numEmp] = null;
 					}
@@ -1363,23 +1376,22 @@ const resolvers = {
 				request.name = employeeNameCache[request.numEmp];
 			}
 
-
-			return { success: true, message: "Done", data: formattedRequests }
-			if (isSupervisor[0].result && numEmp !== 0 && numEmp !== '0') {
+			return { success: true, message: "Done", data: formattedRequests };
+			if (isSupervisor[0].result && numEmp !== 0 && numEmp !== "0") {
 				const activeEmployees = await executeQuery(
 					`SELECT CB_CODIGO as employeeNum
 						FROM COLABORA
 						WHERE CB_NIVEL3 = '${isSupervisor[0].result.trim()}'
 						AND CB_ACTIVO = 'S'`,
 					"Error fetching employees information",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				if (activeEmployees && activeEmployees.length > 0) {
-					console.log("Active employees under supervisor: ", activeEmployees)
+					console.log("Active employees under supervisor: ", activeEmployees);
 					const employeeNums = activeEmployees
-						.map(emp => `'${emp.employeeNum}'`) // wrap each number in single quotes
-						.join(', ');
+						.map((emp) => `'${emp.employeeNum}'`) // wrap each number in single quotes
+						.join(", ");
 
 					console.log("Employee numbers: ", employeeNums);
 
@@ -1391,93 +1403,39 @@ const resolvers = {
 							AND (Carta = 'Vacaciones'
 							or Carta = 'Permiso')`,
 						"Error fetching employee requests information",
-						dbs.kioskotek
+						dbs.kioskotek,
 					);
 					if (employeeRequests && employeeRequests.length > 0) {
-
-						return { success: true, message: "Available requests", data: employeeRequests }
+						return {
+							success: true,
+							message: "Available requests",
+							data: employeeRequests,
+						};
 					} else {
-						return { success: true, message: "No requests" }
+						return { success: true, message: "No requests" };
 					}
-					console.log("Employee requests: ", employeeRequests)
+					console.log("Employee requests: ", employeeRequests);
 				}
-				return { success: true, message: "Done", }
+				return { success: true, message: "Done" };
 			} else {
-				return { success: false, message: "Done" }
+				return { success: false, message: "Done" };
 			}
-
 		},
 		ComplaintInfo: async (_, { region }) => {
 			// const dbs = await selectRegion(region);
 
-
-			const email = 't.escuchamos@tecma.com';
-			const phone = region === "TIJ"
-				? "8116010519"
-				: region === "MTY" || region === "SAL"
-					? "6647983328"
-					: "6563755037"; // Telefono central
-
-
+			const email = "t.escuchamos@tecma.com";
+			const phone =
+				region === "TIJ"
+					? "8116010519"
+					: region === "MTY" || region === "SAL"
+						? "6647983328"
+						: "6563755037"; // Telefono central
 
 			return { success: true, message: "Done", data: { email, phone } };
 		},
-		BadgeData: requireAuth(async (_, __, { user }) => {
-			try {
-
-				if (!user) throw new Error("Unauthorized");
-
-				const { empId, region } = user;
-
-				return { success: true, message: "Done", data: { format: "CODE128" } };
-
-				// console.log("User is: ", user);
-				// return { id: true };
-				// 1. Select correct DB
-				// const dbs = await selectRegion(user.region);
-
-				// let code = {};
-				// switch (region) {
-				// 	case "JRZ":
-				// 	case "MTY":
-				// 	case "AMX": {
-				// 		code.supervisor = "3";
-				// 		code.area = "5";
-				// 		code.planta = "7";
-				// 		break;
-				// 	}
-				// 	case "SAL":
-				// 	case "TIJ": {
-				// 		code.supervisor = "8";
-				// 		code.area = "6";
-				// 		code.planta = "1";
-				// 		break;
-				// 	}
-				// }
-
-				// const userDetails = await executeQuery(
-				// 	`SELECT CB_CODIGO as employee_id,
-				// 		CB_NIVEL${code.area} AS area,
-				// 		CB_NIVEL${code.supervisor} AS project,
-				// 		CB_NIVEL${code.planta} AS plant
-				// 	FROM COLABORA
-				// 	WHERE CB_CODIGO = '${user.empId}'`,
-				// 	"Error fetching user details",
-				// 	dbs.colabora
-				// );
-
-				// console.log("User details are: ", userDetails[0])
-
-			} catch (error) {
-				console.error("Error in badge data resolver:", error);
-				throw new Error("Failed to load badge data");
-			}
-
-		},
-		),
 		Notifications: requireAuth(async (_, __, { user }) => {
 			try {
-
 				if (!user) throw new Error("Unauthorized");
 
 				const { empId, region } = user;
@@ -1514,7 +1472,7 @@ const resolvers = {
 					FROM COLABORA
 					WHERE CB_CODIGO = '${user.empId}'`,
 					"Error fetching user details",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				// console.log("User details are: ", userDetails[0])
@@ -1535,7 +1493,7 @@ const resolvers = {
 								SELECT 1 FROM notificationsRead r
 								WHERE r.notification_id = n.id AND r.employee_id = '${empId}'
 							)
-						ORDER BY n.created_at DESC`
+						ORDER BY n.created_at DESC`;
 
 				// console.log("Notifications query is: ", notificationsQuery)
 				const notifications = await executeQuery(
@@ -1560,67 +1518,67 @@ const resolvers = {
 							...n,
 							files,
 						};
-					})
+					}),
 				);
 
-				console.log("Returning: ", enriched)
+				console.log("Returning: ", enriched);
 
 				return enriched;
 			} catch (error) {
 				console.error("Error in notifications resolver:", error);
 				throw new Error("Failed to load notifications");
 			}
+		}),
+		NotificationFileUrl: requireAuth(
+			async (_, { notificationId, fileId }, { user }) => {
+				if (!user) throw new Error("Unauthorized");
 
-		},
-		),
-		NotificationFileUrl: requireAuth(async (_, { notificationId, fileId }, { user }) => {
-			if (!user) throw new Error("Unauthorized");
+				const { empId, region } = user;
 
-			const { empId, region } = user;
+				// 1) Select correct DBs for this region
+				const dbs = await selectRegion(region);
 
-			// 1) Select correct DBs for this region
-			const dbs = await selectRegion(region);
+				// 2) Map NIVEL indices based on region (same logic you use in Notifications)
+				let code = {};
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.planta = "7";
+						break;
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.area = "6";
+						code.planta = "1";
+						break;
+					default:
+						throw new Error(`Unsupported region: ${region}`);
+				}
 
-			// 2) Map NIVEL indices based on region (same logic you use in Notifications)
-			let code = {};
-			switch (region) {
-				case "JRZ":
-				case "MTY":
-				case "AMX":
-					code.supervisor = "3";
-					code.area = "5";
-					code.planta = "7";
-					break;
-				case "SAL":
-				case "TIJ":
-					code.supervisor = "8";
-					code.area = "6";
-					code.planta = "1";
-					break;
-				default:
-					throw new Error(`Unsupported region: ${region}`);
-			}
-
-			// 3) Get user details (area/project/plant)
-			const userDetails = await executeQuery(
-				`SELECT CB_CODIGO as employee_id,
+				// 3) Get user details (area/project/plant)
+				const userDetails = await executeQuery(
+					`SELECT CB_CODIGO as employee_id,
 						CB_NIVEL${code.area}       AS area,
 						CB_NIVEL${code.supervisor} AS project,
 						CB_NIVEL${code.planta}     AS plant
 				FROM COLABORA
 				WHERE CB_CODIGO = '${empId}'`,
-				"Error fetching user details",
-				dbs.colabora
-			);
+					"Error fetching user details",
+					dbs.colabora,
+				);
 
-			if (!userDetails?.length) throw new Error("Employee not found for region");
+				if (!userDetails?.length)
+					throw new Error("Employee not found for region");
 
-			const area = String(userDetails[0].area || "").trim();
-			const project = String(userDetails[0].project || "").trim();
-			const plant = String(userDetails[0].plant || "").trim();
+				const area = String(userDetails[0].area || "").trim();
+				const project = String(userDetails[0].project || "").trim();
+				const plant = String(userDetails[0].plant || "").trim();
 
-			// 4) Verify the notification is visible to this user (same targeting logic)
-			const visibilityQuery = `
+				// 4) Verify the notification is visible to this user (same targeting logic)
+				const visibilityQuery = `
 				SELECT TOP 1 n.id
 				FROM notifications n
 				JOIN notificationTargets t ON n.id = t.notification_id
@@ -1633,56 +1591,470 @@ const resolvers = {
 				AND (t.employee_id IS NULL OR t.employee_id = '${empId}')
 			`;
 
-			const visibility = await executeQuery(
-				visibilityQuery,
-				"Error verifying notification visibility",
-				"tecmamovilcentral"
-			);
+				const visibility = await executeQuery(
+					visibilityQuery,
+					"Error verifying notification visibility",
+					"tecmamovilcentral",
+				);
 
-			if (!visibility?.length) throw new Error("Notification not found or not authorized");
+				if (!visibility?.length)
+					throw new Error("Notification not found or not authorized");
 
-			// 5) Ensure the file belongs to this notification
-			const fileRow = await executeQuery(
-				`SELECT TOP 1 id, file_name
+				// 5) Ensure the file belongs to this notification
+				const fileRow = await executeQuery(
+					`SELECT TOP 1 id, file_name
 				FROM notificationFiles
 				WHERE id = ${Number(fileId)}
 				AND notification_id = ${Number(notificationId)}`,
-				"Error verifying notification file",
-				"tecmamovilcentral"
-			);
+					"Error verifying notification file",
+					"tecmamovilcentral",
+				);
 
-			if (!fileRow?.length) throw new Error("File not found for this notification");
+				if (!fileRow?.length)
+					throw new Error("File not found for this notification");
 
-			const fileName = fileRow[0].file_name;
-			// basic allowlist to avoid traversal
-			if (!/^[a-zA-Z0-9._-]+$/.test(fileName)) throw new Error("Invalid filename");
+				const fileName = fileRow[0].file_name;
+				// basic allowlist to avoid traversal
+				if (!/^[a-zA-Z0-9._-]+$/.test(fileName))
+					throw new Error("Invalid filename");
 
-			// 6) Sign a short-lived (2 min) download token
-			const token = jwt.sign(
-				{ typ: "download", file: fileName, empId, region },
-				notifKey,
-				{ expiresIn: "2m" }
-			);
+				// 6) Sign a short-lived (2 min) download token
+				const token = jwt.sign(
+					{ typ: "download", file: fileName, empId, region },
+					notifKey,
+					{ expiresIn: "2m" },
+				);
 
-			// 7) Build absolute URL to your download route
-			const base =
-				process.env.HOST === "PRODUCTION"
-					? "https://api.tecmamovilconnect.com"
-					: "http://10.3.1.180:8083";
+				// 7) Build absolute URL to your download route
+				const base =
+					process.env.HOST === "PRODUCTION"
+						? "https://api.tecmamovilconnect.com"
+						: "http://10.3.1.180:8083";
 
-			return {
-				success: true,
-				message: 'File URL generated',
-				url: `${base}/download/notification?token=${encodeURIComponent(token)}`
-			};
+				return {
+					success: true,
+					message: "File URL generated",
+					url: `${base}/download/notification?token=${encodeURIComponent(token)}`,
+				};
+			},
+		),
+		LoanData: requireAuth(async (_, __, { user }) => {
+			try {
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				const BUSINESS_TZ = "America/Denver";
+				const now = DateTime.now().setZone(BUSINESS_TZ);
+
+				const dbs = await selectRegion(region);
+
+				// 1️⃣ Fetch employee details
+				const userDetails = await executeParameterizedQuery(
+					`
+					SELECT 
+						CB_CODIGO AS employee_id,
+						CB_CLASIFI AS classification
+					FROM COLABORA
+					WHERE CB_CODIGO = @param1
+					`,
+					[empId],
+					"Error fetching user details",
+					dbs.colabora,
+				);
+
+				console.log("User details are: ", userDetails[0]);
+
+				if (!userDetails || userDetails.length === 0) {
+					return {
+						success: false,
+						message: "Empleado no encontrado.",
+					};
+				}
+
+				// 2️⃣ Fetch savings balance
+				const balanceResult = await executeParameterizedQuery(
+					`
+					SELECT 
+						SUM(AH.AH_SALDO) * 2 AS SaldoFA
+					FROM AHORRO AS AH
+					WHERE AH.CB_CODIGO = @param1
+						AND AH.AH_TIPO = '2'
+						AND AH.AH_STATUS = 0
+						AND AH.AH_FECHA = (
+						SELECT MAX(AH_FECHA)
+						FROM AHORRO
+						WHERE CB_CODIGO = @param1
+							AND AH_STATUS = 0
+							AND AH_TIPO = '2'
+						)
+					`,
+					[empId],
+					"Error fetching balance",
+					dbs.colabora,
+				);
+
+				console.log("Balance result: ", balanceResult[0]);
+
+				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
+
+				let isAllowed = false;
+				let reason = null;
+				let maxWeeks = 0;
+
+				// 3️⃣ Check existing loan
+				const existingLoan = await executeParameterizedQuery(
+					`
+					SELECT TOP 1 status
+					FROM Loans
+					WHERE employee_id = @param1
+						AND YEAR(requested_at) = YEAR(GETDATE())
+						-- AND status IN ('PENDING','APPROVED','ACTIVE', 'REJECTED', 'COMPLETED')
+					ORDER BY requested_at DESC
+					`,
+					[empId],
+					"Error checking existing loan",
+					"tecmamovilcentral",
+				);
+
+				const oldRequestedLoan = await executeQuery(
+					`DECLARE @CurrentYear INT = YEAR(GETDATE());
+					DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear,1,1);
+					DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear+1,1,1);
+
+					DECLARE @Exists NVARCHAR(5);
+
+					SET @Exists = (
+						SELECT CASE 
+							WHEN EXISTS (
+								SELECT 1
+								FROM K_Solicitudes
+								WHERE Fecha >= @StartDate
+								AND Fecha < @EndDate
+								AND Carta = 'PtmoFA'
+								AND No = ${empId}
+							)
+							THEN 'true'
+							ELSE 'false'
+						END
+					);
+
+					SELECT @Exists AS status;`,
+					"Error fetching existing loan k",
+					dbs.kioskotek,
+				);
+
+				const oldExistingLoan = await executeQuery(
+					`Declare @CurrentYear INT = YEAR(GETDATE());
+						Declare @Exists NVARCHAR(5);
+		
+						Set @Exists = (
+							Select Case 
+								When Exists (
+									Select 1
+									From PRESTAMO
+									Where YEAR(PR_FECHA) = @CurrentYear
+									And CB_CODIGO = ${empId}
+									And PR_TIPO = '4'
+								) Then 'true'
+								Else 'false'
+							End
+						);
+		
+						Select 
+							@Exists As status`,
+					"Error fetching prenomina days information",
+					dbs.colabora,
+				);
+
+				let loanStatus = existingLoan?.[0]?.status || null;
+
+				const oldLoanRequested =
+					oldRequestedLoan[0].status === "true" ? true : false;
+
+				if (oldLoanRequested) {
+					isAllowed = false;
+					loanStatus = "PENDING";
+					// reason = "Tienes una solicitud de préstamo pendiente de aprobación.";
+				}
+
+				const oldLoanExists =
+					oldExistingLoan[0].status === "true" ? true : false;
+
+				if (oldLoanExists) {
+					isAllowed = false;
+					loanStatus = "COMPLETED";
+					// reason = "Has solicitado un préstamo y ha sido entregado.";
+				}
+
+				console.log(
+					"Existing loan status: ",
+					loanStatus,
+					"Old loan exists: ",
+					oldLoanExists,
+					"Old loan requested: ",
+					oldLoanRequested,
+				);
+
+				if (loanStatus) {
+					// console.log("Evaluating loan status: ", loanStatus);
+					switch (loanStatus) {
+						case "PENDING":
+							isAllowed = false;
+							reason =
+								"Tienes una solicitud de préstamo pendiente de aprobación.";
+							break;
+						case "APPROVED":
+							isAllowed = false;
+							reason = "Tienes una solicitud de préstamo aprobada.";
+							break;
+						case "REJECTED":
+							isAllowed = false;
+							reason = "Tienes una solicitud de préstamo rechazada.";
+							break;
+						case "COMPLETED":
+							isAllowed = false;
+							reason = "Has solicitado un préstamo y ha sido entregado.";
+							break;
+						default:
+							break;
+					}
+				} else {
+					isAllowed = true;
+					reason = "No tienes solicitudes de préstamo activas.";
+				}
+
+				// 4️⃣ Fetch loan cycle config
+				const cycleResult = await executeParameterizedQuery(
+					`
+					SELECT TOP 1 
+						semana_inicial,
+						semana_final
+					FROM Prestamos
+					ORDER BY fecha DESC
+					`,
+					[],
+					"Error fetching loan cycle",
+					"tecmamovilcentral",
+				);
+
+				console.log("Loan cycle config: ", cycleResult[0]);
+
+				const initialWeek = cycleResult[0]?.semana_inicial;
+				const finalWeek = cycleResult[0]?.semana_final;
+
+				function getFirstSaturday(year) {
+					let first = DateTime.fromObject(
+						{ year, month: 1, day: 1 },
+						{ zone: BUSINESS_TZ },
+					);
+					while (first.weekday !== 6) {
+						first = first.plus({ days: 1 });
+					}
+					return first.startOf("day");
+				}
+
+				const firstSaturday = getFirstSaturday(now.year);
+				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
+				const loanEnd = firstSaturday
+					.plus({ weeks: finalWeek - 1 })
+					.endOf("week");
+
+				if (isAllowed && (now < loanStart || now > loanEnd)) {
+					isAllowed = false;
+					reason =
+						"No se encuentra dentro del periodo permitido para préstamos.";
+				}
+
+				if (isAllowed) {
+					console.log(
+						`Current week of the year: ${now.weekNumber}, Loan start week: ${loanStart.weekNumber}, Loan end week: ${loanEnd.weekNumber}`,
+					);
+					const currentWeek =
+						Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
+
+					maxWeeks = finalWeek - currentWeek + 1;
+
+					if (maxWeeks < 2) {
+						isAllowed = false;
+						reason = "El periodo restante no permite un mínimo de 2 semanas.";
+					}
+				}
+
+				const interestRate = 0.159; // Replace later with config table
+
+				const minAmount = parseFloat((balance * 0.1).toFixed(2));
+				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
+
+				console.log("Loan eligibility data: ", {
+					isAllowed,
+					reason,
+					balance,
+					minAmount,
+					maxAmount,
+					maxWeeks,
+					interestRate,
+					loanStatus,
+					loanStart: loanStart.toISO(),
+					loanEnd: loanEnd.toISO(),
+					now: now.toISO(),
+				});
+
+				return {
+					success: true,
+					message: "Información de préstamo obtenida exitosamente.",
+					data: {
+						isAllowed,
+						reason,
+						balance,
+						minAmount,
+						maxAmount,
+						maxWeeks: isAllowed ? maxWeeks : 0,
+						interestRate,
+						loanStatus,
+						cycle: {
+							startDate: loanStart.toISO(),
+							endDate: loanEnd.toISO(),
+						},
+						serverNow: now.toISO(),
+					},
+				};
+			} catch (error) {
+				console.error("LoanData resolver error:", error);
+
+				return {
+					success: false,
+					message: "Hubo un error al obtener la información del préstamo.",
+				};
+			}
 		}),
+		BadgeData: requireAuth(async (_, __, { user }) => {
+			try {
+
+				if (!user) throw new Error("Unauthorized");
+
+				// const { empId, region } = user;
+
+				return { success: true, message: "Done", data: { format: "CODE128" } };
+
+			} catch (error) {
+				console.error("Error in badge data resolver:", error);
+				throw new Error("Failed to load badge data");
+			}
+
+		}),
+		downloadLoanFileInternal: requireServiceAuth("loans:read")(
+			async (_, { loan_id }) => {
+				try {
+
+					if (!loan_id)
+						throw new Error("loan_id required");
+
+					const result = await executeParameterizedQuery(
+						`
+        SELECT 
+            pdf_relative_path,
+            employee_id,
+            requested_at
+        FROM Loans
+        WHERE loan_id = @loan_id
+        `,
+						[
+							{ name: "loan_id", type: sql.Int, value: loan_id }
+						]
+					);
+
+					if (!result.length)
+						throw new Error("Loan not found");
+
+					const loan = result[0];
+
+					const filePath = path.join(
+						process.cwd(),
+						loan.pdf_relative_path
+					);
+
+					if (!fs.existsSync(filePath))
+						throw new Error("Loan file not found");
+
+					const fileBuffer = fs.readFileSync(filePath);
+
+					/* -----------------------------
+					   Generate better filename
+					----------------------------- */
+
+					const timestamp = DateTime.fromJSDate(loan.requested_at)
+						.toFormat("yyyyLLddHHmm");
+
+					const filename = `Prestamo_${loan.employee_id}_${timestamp}.pdf`;
+
+					return {
+						success: true,
+						filename,
+						file: fileBuffer.toString("base64")
+					};
+
+				} catch (error) {
+
+					console.error("Loan file download error:", error);
+					throw new Error("Failed to download loan file");
+
+				}
+			}
+		),
+		RequestLoanDownloadURL: requireServiceAuth("loans:read")(
+			async (_, { loan_id }) => {
+				console.log("Requesting download URL for loan_id: ", loan_id);
+
+				try {
+					const result = await executeParameterizedQuery(`
+						SELECT pdf_relative_path
+						FROM Loans
+						WHERE loan_id = @param1
+					`, [loan_id], "Error fetching Loan relative path", "tecmamovilcentral");
+
+					console.log("Result is: ", result)
+
+					if (!result.length)
+						return {
+							success: false,
+							message: "Loan not found"
+						};
+					const token = jwt.sign(
+						{
+							loan_id,
+							scope: "loan_download"
+						},
+						process.env.FILE_DOWNLOAD_SECRET,
+						{
+							expiresIn: "60s"
+						}
+					);
+
+					const download_url = `${process.env.TMC_API_BASE}/download/loan?token=${token}`
+					console.log("Download URL is: ", download_url)
+					return {
+						success: true,
+						message: "File found and URL retrieved",
+						download_url
+					};
+				} catch (error) {
+					console.log("Error generating loan download URL: ", error);
+					return {
+						success: false,
+						message: "Error generating download URL"
+					};
+				}
+
+			}
+		)
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
 			if (+numEmp > 2147483647 || +numEmp < 0) {
 				return {
 					success: false,
-					message: "Número de empleado inválido."
+					message: "Número de empleado inválido.",
 				};
 			}
 			const dbs = await selectRegion(region);
@@ -1708,19 +2080,41 @@ const resolvers = {
 				}
 			}
 
-			if (numEmp === "26931" || numEmp === "35485" || numEmp === "26837" || numEmp === "31689" || numEmp === "41900" || numEmp === "26831" || numEmp === "27200" || numEmp === "33457" || numEmp === "33544" || numEmp === "33841" || numEmp === "34019" || numEmp === "41922" || numEmp === "14884" || numEmp === "35620" || numEmp === "40361" || numEmp === "40394" || numEmp === "23815" || numEmp === "28916" || numEmp === "42104" || numEmp === "42099" && (region === "TIJ" || region === "SAL")) {
+			if (
+				numEmp === "26931" ||
+				numEmp === "35485" ||
+				numEmp === "26837" ||
+				numEmp === "31689" ||
+				numEmp === "41900" ||
+				numEmp === "26831" ||
+				numEmp === "27200" ||
+				numEmp === "33457" ||
+				numEmp === "33544" ||
+				numEmp === "33841" ||
+				numEmp === "34019" ||
+				numEmp === "41922" ||
+				numEmp === "14884" ||
+				numEmp === "35620" ||
+				numEmp === "40361" ||
+				numEmp === "40394" ||
+				numEmp === "23815" ||
+				numEmp === "28916" ||
+				numEmp === "42104" ||
+				(numEmp === "42099" && (region === "TIJ" || region === "SAL"))
+			) {
 				return {
 					success: false,
-					message: "Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos.",
-				}
+					message:
+						"Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos.",
+				};
 			}
 
-			const isActiveQuery = `SELECT CB_ACTIVO As active, CB_NIVEL${code.proyecto} As project  FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`
+			const isActiveQuery = `SELECT CB_ACTIVO As active, CB_NIVEL${code.proyecto} As project  FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`;
 
 			const isActive = await executeQuery(
 				isActiveQuery,
 				"Error fetching user status",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			if (isActive.length === 0 || isActive[0].active === "N") {
@@ -1731,23 +2125,23 @@ const resolvers = {
 				};
 			}
 
-			if (isActive[0].project.trim() === "H09") {
-				return {
-					success: false,
-					message:
-						"Por separacion del proyecto, se tiene denegado el acceso a la aplicacion.",
-				};
-			}
+			// if (isActive[0].project.trim() === "H75") {
+			// 	return {
+			// 		success: false,
+			// 		message:
+			// 			"Por el momento el sistema se encuentra en mantenimiento, por favor intenta más tarde.",
+			// 	};
+			// }
 
 			const queryNip = await executeQuery(
 				`SELECT CB_CODIGO, NIP, ENCRIPTADA FROM Empleados WHERE CB_CODIGO = '${numEmp}'`,
 				"Error fetching user credentials",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			const userData = queryNip[0];
 
-			console.log("User data is: ", JSON.stringify(userData, null, 1))
+			// console.log("User data is: ", JSON.stringify(userData, null, 1));
 			if (!userData) {
 				return {
 					success: false,
@@ -1757,37 +2151,40 @@ const resolvers = {
 			if (!userData.CB_CODIGO || userData.CB_CODIGO === "") {
 				return {
 					success: false,
-					message: "No tienes registradas credenciales en la plataforma. Si crees que esto es un error, contacta con tu departamento de RH."
-				}
+					message:
+						"No tienes registradas credenciales en la plataforma. Si crees que esto es un error, contacta con tu departamento de RH.",
+				};
 			}
 
 			let isAuthorized = false;
 
 			if (userData.ENCRIPTADA) {
-				console.log("Encriptada is true")
+				// console.log("Encriptada is true");
 				const decryptedPassword = decryptOld(userData.NIP, oldKey);
 
 				if (nip === decryptedPassword) {
-					console.log("Encrypted nip matches ")
-					isAuthorized = true
+					// console.log("Encrypted nip matches ");
+					isAuthorized = true;
 				}
 			} else {
-				console.log("Encriptada is FALSE")
+				console.log("Encriptada is FALSE");
 				if (nip === userData.NIP) {
-					console.log("Unencrypted nip matches")
-					isAuthorized = true
+					console.log("Unencrypted nip matches");
+					isAuthorized = true;
 					const encryptedPasswordOld = encryptOld(nip, oldKey);
+					console.log(
+						`Updating password for ${numEmp} to: ${encryptedPasswordOld}`,
+					);
 
 					await executeQuery(
 						`Update Empleados
 						Set NIP = '${encryptedPasswordOld}',
-							ENCRIPTADA = 1
-						Where
-						CB_CODIGO = '${numEmp}'`,
+					ENCRIPTADA = 1
+				Where
+				CB_CODIGO = '${numEmp}'`,
 						"Error updating NIP",
-						dbs.kioskotek
+						dbs.kioskotek,
 					);
-
 				}
 			}
 
@@ -1802,7 +2199,7 @@ const resolvers = {
 			const queryName = await executeQuery(
 				`SELECT CB_NOMBRES FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
 				"Error fetching user credentials",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			await executeQuery(
@@ -1810,8 +2207,8 @@ const resolvers = {
 				Values('${numEmp}', GETDATE(), '${queryName[0].plant}', '${queryName[0].project}', 'Login')
 				`,
 				"Error logging user access",
-				dbs.kioskotek
-			)
+				dbs.kioskotek,
+			);
 
 			await executeQuery(
 				`UPDATE Empleados
@@ -1819,20 +2216,21 @@ const resolvers = {
 				WHERE CB_CODIGO = '${numEmp}'
 					`,
 				"Error logging user access",
-				dbs.kioskotek
-			)
+				dbs.kioskotek,
+			);
 
 			const token = jwt.sign(
 				{
-					empId: (userData.CB_CODIGO).toString(),
+					empId: userData.CB_CODIGO.toString(),
 					region: region,
 				},
 				process.env.JWT_KEY,
 				{
 					expiresIn: "1h",
-				}
+				},
 			);
 
+			console.log("User: ", numEmp, " logged in to region: ", region);
 			return {
 				success: true,
 				message: "Login successful",
@@ -1872,7 +2270,7 @@ const resolvers = {
 						id,
 						status: "Número de empleado inválido.",
 						nip: null,
-						encrypted: false
+						encrypted: false,
 					});
 					continue;
 				}
@@ -1884,7 +2282,7 @@ const resolvers = {
 						id,
 						status: "Usuario inactivo. Contacte a Recursos Humanos.",
 						nip: null,
-						encrypted: false
+						encrypted: false,
 					});
 					continue;
 				}
@@ -1894,7 +2292,7 @@ const resolvers = {
 				const activeResult = await executeQuery(
 					activeQuery,
 					"Error checking user status",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				if (!activeResult.length) {
@@ -1902,7 +2300,7 @@ const resolvers = {
 						id,
 						status: "Usuario no encontrado en COLABORA.",
 						nip: null,
-						encrypted: false
+						encrypted: false,
 					});
 					continue;
 				}
@@ -1910,9 +2308,10 @@ const resolvers = {
 				if (activeResult[0].active === "N") {
 					results.push({
 						id,
-						status: "Usuario inactivo en COLABORA. Contacte a Recursos Humanos.",
+						status:
+							"Usuario inactivo en COLABORA. Contacte a Recursos Humanos.",
 						nip: null,
-						encrypted: false
+						encrypted: false,
 					});
 					continue;
 				}
@@ -1921,7 +2320,7 @@ const resolvers = {
 				const queryNip = await executeQuery(
 					`SELECT NIP, ENCRIPTADA FROM Empleados WHERE CB_CODIGO = '${id}'`,
 					"Error fetching NIP",
-					dbs.kioskotek
+					dbs.kioskotek,
 				);
 
 				const userData = queryNip[0];
@@ -1931,7 +2330,7 @@ const resolvers = {
 						id,
 						status: "Usuario no encontrado en Empleados (Kioskotek).",
 						nip: null,
-						encrypted: false
+						encrypted: false,
 					});
 					continue;
 				}
@@ -1941,7 +2340,7 @@ const resolvers = {
 						id,
 						status: "Usuario sin NIP asignado.",
 						nip: null,
-						encrypted: false
+						encrypted: false,
 					});
 					continue;
 				}
@@ -1958,7 +2357,7 @@ const resolvers = {
 							id,
 							status: `Error al desencriptar el NIP.Encriptada: ${userData.ENCRIPTADA} `,
 							nip: userData.NIP,
-							encrypted: true
+							encrypted: true,
 						});
 						continue;
 					}
@@ -1971,7 +2370,7 @@ const resolvers = {
 					id,
 					status: "Logged in correctly",
 					nip,
-					encrypted
+					encrypted,
 				});
 			}
 
@@ -1991,7 +2390,7 @@ const resolvers = {
 				Where
 				CB_CODIGO = ${numEmp} `,
 				"Error retrieving employee login date",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			const employeeRFC = await executeQuery(
@@ -2002,7 +2401,7 @@ const resolvers = {
 				Where
 				CB_CODIGO = ${numEmp} `,
 				"Error retrieving employee login date",
-				dbs.colabora
+				dbs.colabora,
 			);
 			console.log("Employee data: ", employeeData);
 
@@ -2013,7 +2412,7 @@ const resolvers = {
 			const launchDate = new Date(2026, 4, 24);
 			const lastLoginDate = new Date(employeeData[0].login_date);
 			console.log(
-				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate} `
+				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate} `,
 			);
 
 			if (lastLoginDate > launchDate) {
@@ -2037,7 +2436,7 @@ const resolvers = {
 				CB_CODIGO = ${numEmp}
 						And RFC = '${rfc}'`,
 						"Error updating measurement",
-						dbs.kioskotek
+						dbs.kioskotek,
 					);
 					return "Success";
 				}
@@ -2054,7 +2453,10 @@ const resolvers = {
 					console.log("New nip is: ", newNIP);
 					const encryptedPasswordOld = encryptOld(newNIP, oldKey);
 					console.log("Encrypted password: ", encryptedPasswordOld);
-					console.log("Unencrypted new password: ", decryptOld(encryptedPasswordOld, oldKey));
+					console.log(
+						"Unencrypted new password: ",
+						decryptOld(encryptedPasswordOld, oldKey),
+					);
 
 					const employeeNIPReset = await executeQuery(
 						`UPDATE Empleados
@@ -2062,7 +2464,7 @@ const resolvers = {
 					ENCRIPTADA = 1
 						WHERE CB_CODIGO = '${numEmp}'`,
 						"Error resetting employee nip",
-						dbs.kioskotek
+						dbs.kioskotek,
 					);
 
 					console.log("Employee NIP reset: ", employeeNIPReset);
@@ -2103,7 +2505,7 @@ const resolvers = {
 						@currentDate
 					)`,
 				"Error adding family member",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			return true;
@@ -2118,7 +2520,7 @@ const resolvers = {
 					And Nombre = '${name}'
 					And FecActualiza = '${date}'`,
 				"Error removing family member",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			return true;
@@ -2146,7 +2548,7 @@ const resolvers = {
 				Select
 					@Exists as [exists]`,
 				"Error evaluating entry",
-				dbs.kioskotek
+				dbs.kioskotek,
 			);
 
 			if (existing[0].exists === "true") {
@@ -2165,7 +2567,7 @@ const resolvers = {
 							And Tipo = '${type}'
 						);`,
 					"Error updating measurement",
-					dbs.kioskotek
+					dbs.kioskotek,
 				);
 			} else {
 				await executeQuery(
@@ -2178,7 +2580,7 @@ const resolvers = {
 						'${size}', 
 						@currentDate)`,
 					"Error adding measurement",
-					dbs.kioskotek
+					dbs.kioskotek,
 				);
 			}
 
@@ -2207,13 +2609,11 @@ const resolvers = {
 				days = null,
 				requested_loan = null,
 				loan_weeks = null,
-			}
+			},
 		) => {
 			// console.log(`Day to adjust: ${day_to_adjust}, period: ${period}`);
 			// return
 			try {
-
-
 				if (letter === "PtmoFA") {
 					if (loan_weeks < 2) return "LessThan2Weeks";
 				}
@@ -2237,58 +2637,56 @@ const resolvers = {
 					loan_weeks,
 				};
 				const dbs = await selectRegion(region);
-				console.log("Data values: ", JSON.stringify(data, null, 1));
+				// console.log("Data values: ", JSON.stringify(data, null, 1));
 				// if (letter === "PtmoFA") {
 				// 	console.log("Letter is PtmoFA");
 				// 	return { pdfFile: "Wait" };
 				// }
 
-				if (letter !== "NIP" && letter !== "AltaIMSS") {
-					let letterQuery;
-					switch (letter) {
-						case "CartaPrestamo":
-							console.log("Caso prestamo");
-							letterQuery = "Prestamo";
-							break;
-						case "CartaGuarderia":
-						case "CartaTrabajo":
-						case "CartaVisa":
-						case "CartaPermiso":
-							letterQuery = letter.substring(5);
-							break;
-						case "PermisoDias":
-							letterQuery = "Permiso";
-							break;
-						case "AjustePrenom":
-							letterQuery = "Ajuste";
-							break;
-						default:
-							letterQuery = letter;
-							break;
-					}
-					const existing = await executeQuery(
-						`SELECT 
-							CASE 
-								WHEN EXISTS (
-									SELECT 1 
-									FROM K_Solicitudes 
-									WHERE No = '${numEmp}'
-									AND Carta = '${letterQuery}'
-									AND Pendiente = 1
-									AND YEAR(Fecha) = YEAR(GETDATE())
-								) 
-								THEN CAST(1 AS BIT)
-								ELSE CAST(0 AS BIT)
-							END AS existing_requisition;
-						`,
-						"Error retrieving employee information",
-						dbs.kioskotek
-					);
-					// console.log("Existing: ", existing);
-					if (existing[0].existing_requisition) {
-						return { pdfFile: "Existing requisition" };
-					}
-				}
+				// if (letter !== "NIP" && letter !== "AltaIMSS") {
+				// 	let letterQuery;
+				// 	switch (letter) {
+				// 		case "CartaPrestamo":
+				// 			console.log("Caso prestamo");
+				// 			letterQuery = "Prestamo";
+				// 			break;
+				// 		case "CartaGuarderia":
+				// 		case "CartaTrabajo":
+				// 		case "CartaVisa":
+				// 		case "CartaPermiso":
+				// 			letterQuery = letter.substring(5);
+				// 			break;
+				// 		case "PermisoDias":
+				// 			letterQuery = "Permiso";
+				// 			break;
+				// 		case "AjustePrenom":
+				// 			letterQuery = "Ajuste";
+				// 			break;
+				// 		default:
+				// 			letterQuery = letter;
+				// 			break;
+				// 	}
+				// 	const existing = await executeQuery(
+				// 		`SELECT
+				// 			CASE
+				// 				WHEN EXISTS (
+				// 					SELECT 1
+				// 					FROM K_Solicitudes
+				// 					WHERE No = '${numEmp}'
+				// 					And Carta = '${letterQuery}'
+				// 					And Pendiente = 1
+				// 				)
+				// 				THEN CAST(1 AS BIT)
+				// 				ELSE CAST(0 AS BIT)
+				// 			END AS existing_requisition;`,
+				// 		"Error retrieving employee information",
+				// 		dbs.kioskotek
+				// 	);
+				// 	// console.log("Existing: ", existing);
+				// 	if (existing[0].existing_requisition) {
+				// 		return { pdfFile: "Existing requisition" };
+				// 	}
+				// }
 
 				// console.log(data);
 				data.coment = coment;
@@ -2325,13 +2723,13 @@ const resolvers = {
 
 					// Generate original format (YYYY-MM-DD HH:MM:SS.mmm)
 					const formattedDateTime = `${year}-${month}-${day} ${padZero(
-						hours24
+						hours24,
 					)}:${minutes}:${seconds}.${milliseconds}`;
 
 					// Convert hours to 12-hour format and create custom format (YYYYMMDDhhmm)
 					let hours12 = hours24 % 12 || 12; // Convert 24-hour to 12-hour format
 					const formattedCustom = `${year}${month}${day}${padZero(
-						hours12
+						hours12,
 					)}${minutes}`;
 
 					// Return both formats
@@ -2376,7 +2774,7 @@ const resolvers = {
 					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
-					dbs.kioskotek
+					dbs.kioskotek,
 				);
 				// console.log("Directory: ", directory);
 
@@ -2465,10 +2863,8 @@ const resolvers = {
 						Where
 							CB_CODIGO = '${numEmp}'`,
 							"Error retrieving employee information",
-							dbs.colabora
+							dbs.colabora,
 						);
-
-
 
 						console.log("Employee data: ", employeeData[0]);
 
@@ -2491,7 +2887,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
 							"Error retrieving employee information",
-							dbs.colabora
+							dbs.colabora,
 						);
 						employeeData[0].id_proyecto = employeeData[0].id_proyecto.trim();
 						if (employeeData[0].id_proyecto === "H09") {
@@ -2522,8 +2918,6 @@ const resolvers = {
 									companyData[0].ciudad = "Ciudad Juárez";
 									companyData[0].entidad = "Chihuahua";
 									break;
-
-
 							}
 						}
 						// console.log("Employee data: ", employeeData);
@@ -2542,7 +2936,7 @@ const resolvers = {
 
 						pdfData.salario_mensual = (pdfData.salario * 30.4).toFixed(2);
 						pdfData.salario_mensual_letra = getFormattedSalario(
-							pdfData.salario_mensual
+							pdfData.salario_mensual,
 						);
 
 						pdfData.antiguedad = formatDateToSpanish(antiguedadDate);
@@ -2560,7 +2954,7 @@ const resolvers = {
 
 						const imageBase64 = fs
 							.readFileSync(
-								path.join(__dirname, `../../public/assets/images/${logoName}`)
+								path.join(__dirname, `../../public/assets/images/${logoName}`),
 							)
 							.toString("base64");
 
@@ -2597,7 +2991,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
 							"Error retrieving company information",
-							dbs.colabora
+							dbs.colabora,
 						);
 
 						const formattedDate = formatDateToSpanish(new Date());
@@ -2624,7 +3018,7 @@ const resolvers = {
 
 						const imageBase64 = fs
 							.readFileSync(
-								path.join(__dirname, `../../public/assets/images/${logoName}`)
+								path.join(__dirname, `../../public/assets/images/${logoName}`),
 							)
 							.toString("base64");
 
@@ -2753,7 +3147,9 @@ const resolvers = {
 						} else if (fileName === "document.pdf") {
 							fileExtension = "pdf";
 						} else {
-							throw new Error("Invalid file type. Only JPG and PDF are allowed.");
+							throw new Error(
+								"Invalid file type. Only JPG and PDF are allowed.",
+							);
 						}
 
 						newFileName = `Domicilio_${numEmp} - ${formattedCustom}.${fileExtension}`;
@@ -2774,15 +3170,10 @@ const resolvers = {
 						// 	"1301786"
 						// ]);
 
-						// if (blockedEmployees.has(numEmp) || data.plant_id.trim() === "8-41") {
-						// 	return { pdfFile: "Exists" };
-						// }
-						
-						if (data.plant_id.trim() === "8-41" || data.plant_id.trim() === "V-D" ) {
+						if (data.plant_id.trim() === "8-41" || data.plant_id.trim() === "V-D") {
 							return { pdfFile: "Exists" };
 						}
-						
-						letterType = letter;
+
 						const interestRate = 0.159;
 						const prestamo = await executeQuery(
 							`Declare @CurrentYear INT = YEAR(GETDATE());
@@ -2815,7 +3206,7 @@ const resolvers = {
 													AND AH_STATUS = 0 
 													AND AH_TIPO = '2');`,
 							"Error fetching prenomina days information",
-							dbs.colabora
+							dbs.colabora,
 						);
 
 						const prestamoKiosko = await executeQuery(
@@ -2837,7 +3228,7 @@ const resolvers = {
 						Select 
 							@Exists As prestamoExists`,
 							"Error fetching existing loan k",
-							dbs.kioskotek
+							dbs.kioskotek,
 						);
 
 						const isLoanAllowed =
@@ -2858,7 +3249,10 @@ const resolvers = {
 						}
 
 						const balance = returnZero(prestamo[0].balance);
-						if (requested_loan > balance * 0.9 || requested_loan < balance * 0.1)
+						if (
+							requested_loan > balance * 0.9 ||
+							requested_loan < balance * 0.1
+						)
 							return { pdfFile: "Limit" };
 						console.log("Balance is: ", balance);
 
@@ -2869,7 +3263,7 @@ const resolvers = {
 							FROM Prestamos
 							ORDER BY fecha DESC;`,
 							"Error fetching prestamo weeks information",
-							dbs.tecmamovil
+							"tecmamovilcentral",
 						);
 
 						const initial_week = prestamo_weeks[0].initial_week;
@@ -2890,8 +3284,8 @@ const resolvers = {
 							const daysOffset = (weekNumber - 1) * 7;
 							const startOfWeek = new Date(
 								firstSaturdayOfYear.setDate(
-									firstSaturdayOfYear.getDate() + daysOffset
-								)
+									firstSaturdayOfYear.getDate() + daysOffset,
+								),
 							);
 							const endOfWeek = new Date(startOfWeek);
 							endOfWeek.setDate(startOfWeek.getDate() + 6); // Last day of the week
@@ -2900,7 +3294,7 @@ const resolvers = {
 								"Start of week: ",
 								startOfWeek,
 								" end of week: ",
-								endOfWeek
+								endOfWeek,
 							);
 							return {
 								firstDay: startOfWeek,
@@ -2919,7 +3313,7 @@ const resolvers = {
 						if (today >= startDate.firstDay && today <= endDate.lastDay) {
 							const diffInTime = endDate.lastDay - today;
 							const diffInWeeks = Math.ceil(
-								diffInTime / (1000 * 60 * 60 * 24 * 7)
+								diffInTime / (1000 * 60 * 60 * 24 * 7),
 							);
 
 							availableWeeks = diffInWeeks;
@@ -2928,16 +3322,19 @@ const resolvers = {
 							return { pdfFile: "OutOfRange" };
 						}
 
-						if (loan_weeks > availableWeeks) return { pdfFile: "ExceedsPeriod" };
+						if (loan_weeks > availableWeeks)
+							return { pdfFile: "ExceedsPeriod" };
 
 						const interest = parseFloat(
-							((interestRate * loan_weeks * requested_loan) / 100).toFixed(2)
+							((interestRate * loan_weeks * requested_loan) / 100).toFixed(2),
 						);
 
-						const totalToPay = parseFloat((requested_loan + interest).toFixed(2));
+						const totalToPay = parseFloat(
+							(requested_loan + interest).toFixed(2),
+						);
 
 						const weekly_discount = parseFloat(
-							(totalToPay / loan_weeks).toFixed(2)
+							(totalToPay / loan_weeks).toFixed(2),
 						);
 
 						const companyData = await executeQuery(
@@ -2950,7 +3347,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
 							"Error retrieving company information",
-							dbs.colabora
+							dbs.colabora,
 						);
 
 						const formattedDate = formatDateToSpanish(new Date());
@@ -2982,7 +3379,7 @@ const resolvers = {
 
 						const imageBase64 = fs
 							.readFileSync(
-								path.join(__dirname, `../../public/assets/images/${logoName}`)
+								path.join(__dirname, `../../public/assets/images/${logoName}`),
 							)
 							.toString("base64");
 
@@ -3009,6 +3406,7 @@ const resolvers = {
 						break;
 					}
 					case "RetiroFA": {
+						spoti
 						letterType = letter;
 
 						const formatDateToSpanish = () => {
@@ -3027,7 +3425,8 @@ const resolvers = {
 						const getFormattedDateTime = () => {
 							const currentDate = new Date();
 
-							const padZero = (num, size = 2) => String(num).padStart(size, "0");
+							const padZero = (num, size = 2) =>
+								String(num).padStart(size, "0");
 
 							const year = currentDate.getFullYear();
 							const month = padZero(currentDate.getMonth() + 1);
@@ -3038,7 +3437,7 @@ const resolvers = {
 							const seconds = padZero(currentDate.getSeconds());
 
 							return `${day}-${month}-${year} ${padZero(
-								hours24
+								hours24,
 							)}:${minutes}:${seconds}`;
 						};
 
@@ -3059,7 +3458,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = ${numEmp}`,
 							"Error retrieving employee information",
-							dbs.colabora
+							dbs.colabora,
 						);
 
 						const formattedDate = formatDateToSpanish();
@@ -3093,7 +3492,7 @@ const resolvers = {
 
 						const imageBase64 = fs
 							.readFileSync(
-								path.join(__dirname, `../../public/assets/images/${logoName}`)
+								path.join(__dirname, `../../public/assets/images/${logoName}`),
 							)
 							.toString("base64");
 
@@ -3130,9 +3529,13 @@ const resolvers = {
 					case "Domicilio":
 					case "RetiroFA":
 						if (project.trim() === "H63") {
-							mail = directory[0] ? directory[0].csc_advisor_email : defaultCSCMail;
+							mail = directory[0]
+								? directory[0].csc_advisor_email
+								: defaultCSCMail;
 						} else {
-							mail = directory[0] ? directory[0].hr_advisor_email : defaultHRMail;
+							mail = directory[0]
+								? directory[0].hr_advisor_email
+								: defaultHRMail;
 						}
 						break;
 
@@ -3142,9 +3545,14 @@ const resolvers = {
 					case "Banorte":
 					case "Gafete":
 					case "AltaIMSS":
-						console.log("Datos en directorio de asesor asignado: ", directory[0])
-						mail = directory[0] ? directory[0].csc_advisor_email : defaultCSCMail;
-						console.log("Correo asignado: ", mail)
+						console.log(
+							"Datos en directorio de asesor asignado: ",
+							directory[0],
+						);
+						mail = directory[0]
+							? directory[0].csc_advisor_email
+							: defaultCSCMail;
+						console.log("Correo asignado: ", mail);
 						break;
 
 					// Especial
@@ -3216,12 +3624,14 @@ const resolvers = {
 						coment ? coment : null,
 					],
 					"Error while sending requisition",
-					dbs.kioskotek
+					dbs.kioskotek,
 				);
 				console.log("Done");
 				return { pdfFile: "Done" };
 			} catch (err) {
-				console.error(`Error at sendRequisition for user: ${numEmp}, error: ${err}`);
+				console.error(
+					`Error at sendRequisition for user: ${numEmp}, error: ${err}`,
+				);
 				// throw new Error("Error processing request");
 				return { pdfFile: "Error" };
 			}
@@ -3333,7 +3743,7 @@ const resolvers = {
 					And NOM.PE_NUMERO = ${period}
 					And NOM.CB_CODIGO = ${numEmp}`,
 				"Error retrieving employee information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			const companyData = await executeQuery(
@@ -3356,7 +3766,7 @@ const resolvers = {
 				WHERE
 					C.CB_CODIGO = ${numEmp}`,
 				"Error retrieving employee information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			// console.log("Employee data: ", employeeData[0]);
@@ -3383,7 +3793,7 @@ const resolvers = {
 				Order By
 					Mov.CO_NUMERO;`,
 				"Error retrieving employee information",
-				dbs.colabora
+				dbs.colabora,
 			);
 
 			// console.log("Employee data: ", JSON.stringify(employeeData[0], null, 1));
@@ -3434,11 +3844,11 @@ const resolvers = {
 			};
 
 			payrollData.periodo = `${formatDateToSpanish(
-				payrollData.fecha_inicial
+				payrollData.fecha_inicial,
 			)} A ${formatDateToSpanish(payrollData.fecha_final)}`;
 			payrollData.fecha_pago = formatDateToSpanish(payrollData.fecha_pago);
 			payrollData.fecha_ingreso = formatDateToSpanish(
-				payrollData.fecha_ingreso
+				payrollData.fecha_ingreso,
 			);
 			payrollData.ahorro_total = payrollData.ahorro * 2;
 
@@ -3460,7 +3870,7 @@ const resolvers = {
 
 			const imageBase64 = fs
 				.readFileSync(
-					path.join(__dirname, `../../public/assets/images/${logoName}`)
+					path.join(__dirname, `../../public/assets/images/${logoName}`),
 				)
 				.toString("base64");
 
@@ -3524,7 +3934,7 @@ const resolvers = {
 					const values = data
 						.map(
 							(item) =>
-								`(${encuesta}, '${numEmp}', ${item.pregunta}, '${item.respuesta}')`
+								`(${encuesta}, '${numEmp}', ${item.pregunta}, '${item.respuesta}')`,
 						)
 						.join(", ");
 
@@ -3539,13 +3949,13 @@ const resolvers = {
 					await executeQuery(
 						query,
 						"Error registering survey responses",
-						dbs.kioskotek
+						dbs.kioskotek,
 					);
 
 					await executeQuery(
 						`Update K_Encuestas Set Estatus = 'T' Where Encuesta = ${encuesta} And No = ${numEmp}`,
 						"Error updating survey status",
-						dbs.kioskotek
+						dbs.kioskotek,
 					);
 
 					console.log("Survey responses successfully inserted.");
@@ -3622,7 +4032,7 @@ const resolvers = {
 				// Construct the SQL query
 				const query = `SELECT 
 									CB_SEGSOC As imss, 
-									CB_FEC_ING As ingreso
+									CB_FEC_ANT As ingreso
 								FROM COLABORA
 								WHERE CB_CODIGO = '${numEmp}'`;
 
@@ -3632,7 +4042,7 @@ const resolvers = {
 				const data = await executeQuery(
 					query,
 					"Error querying employee info",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				// console.log("Obtained data is: ", data);
@@ -3652,7 +4062,16 @@ const resolvers = {
 		},
 		requestAbsence: async (_, { input }) => {
 			try {
-				const { numEmp, region, type, start_date, end_date, days, motive, comment } = input;
+				const {
+					numEmp,
+					region,
+					type,
+					start_date,
+					end_date,
+					days,
+					motive,
+					comment,
+				} = input;
 				const dbs = await selectRegion(region);
 				console.log("Input is: ", JSON.stringify(input, null, 1));
 
@@ -3665,8 +4084,9 @@ const resolvers = {
 				}
 
 				const startDateSQL = `'${new Date(start_date).toISOString().split("T")[0]}'`;
-				const endDateSQL = end_date ? `'${new Date(end_date).toISOString().split("T")[0]}'` : 'NULL';
-
+				const endDateSQL = end_date
+					? `'${new Date(end_date).toISOString().split("T")[0]}'`
+					: "NULL";
 
 				// const approverData = await executeQuery(
 				// 	`SELECT CB_NIVEL3 as approver FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
@@ -3680,7 +4100,7 @@ const resolvers = {
 					INNER JOIN NIVEL3 As N3 ON C.CB_NIVEL3 = N3.TB_CODIGO
 					WHERE CB_CODIGO = '${numEmp}'`,
 					"Error fetching approver",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				// console.warn("Approver data: ", approverData[0])
@@ -3719,7 +4139,7 @@ const resolvers = {
 					message: "Se registró la solicitud correctamente.",
 				};
 			} catch (error) {
-				console.error("Request absence caught error: ", error)
+				console.error("Request absence caught error: ", error);
 				return {
 					success: false,
 					message: "Ocurrió un error al registrar la solicitud.",
@@ -3746,41 +4166,48 @@ const resolvers = {
 					FROM NIVEL3
 					WHERE TB_NUMERO = '${numEmp}'`,
 					"Error fetching supervisor information",
-					dbs.colabora
+					dbs.colabora,
 				);
 
-				console.warn("Employee authorizer: ", approverData[0])
+				console.warn("Employee authorizer: ", approverData[0]);
 
 				switch (action) {
 					case "approve":
 						const formatISOToUTCDateTime = (isoString) => {
 							const date = new Date(isoString);
 
-							const pad = (n) => n.toString().padStart(2, '0');
-							const padMs = (n) => n.toString().padStart(3, '0');
+							const pad = (n) => n.toString().padStart(2, "0");
+							const padMs = (n) => n.toString().padStart(3, "0");
 
-							return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
-								`${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}.${padMs(date.getUTCMilliseconds())}`;
-						}
+							return (
+								`${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+								`${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}.${padMs(date.getUTCMilliseconds())}`
+							);
+						};
 
-
-
-						const requestData = await executeQuery(`SELECT * FROM solicitudes_ausencia
+						const requestData = await executeQuery(
+							`SELECT * FROM solicitudes_ausencia
 														WHERE id_solicitud = ${request_id}`,
 							"Error fetching request data",
-							dbs.tecmamovil);
+							dbs.tecmamovil,
+						);
 
-						console.warn("Request data is: ", requestData)
+						console.warn("Request data is: ", requestData);
 
-						if (!approverData[0].superior_id || approverData[0].superior_id.trim === "") {
-							console.warn("\n\nUser doesn't have superior, approving...\n")
-							await executeQuery(`UPDATE solicitudes_ausencia
+						if (
+							!approverData[0].superior_id ||
+							approverData[0].superior_id.trim === ""
+						) {
+							console.warn("\n\nUser doesn't have superior, approving...\n");
+							await executeQuery(
+								`UPDATE solicitudes_ausencia
 											SET estado = 3,
 												aprobado_por = '${numEmp}',
 												fecha_aprobacion = GETDATE()
 											WHERE id_solicitud = ${request_id}`,
 								"Error approving request",
-								dbs.tecmamovil);
+								dbs.tecmamovil,
+							);
 
 							// await executeQuery(`INSERT INTO VACAPLAN (CB_CODIGO, VP_FEC_INI, VP_FEC_FIN, VP_DIAS, VP_SOL_COM, VP_SOL_USR, VP_SOL_FEC)
 							const insertQuery = `SET IDENTITY_INSERT VACAPLAN ON;
@@ -3806,25 +4233,36 @@ const resolvers = {
 										1111
 									)
 									SET IDENTITY_INSERT VACAPLAN OFF;`;
-							console.log("Query is: ", insertQuery)
-							await executeQuery(insertQuery,
+							console.log("Query is: ", insertQuery);
+							await executeQuery(
+								insertQuery,
 								"Error approving request",
-								dbs.colabora);
+								dbs.colabora,
+							);
 
-							return { success: true, message: "Se registró la solicitud correctamente.", }
+							return {
+								success: true,
+								message: "Se registró la solicitud correctamente.",
+							};
 						}
 
-						if (requestData[0].pre_aprobado_por && requestData[0].pre_aprobado_por.trim() !== "") {
-							console.warn("\n\nRequest has been pre-approved, approving...\n")
-							await executeQuery(`UPDATE solicitudes_ausencia
+						if (
+							requestData[0].pre_aprobado_por &&
+							requestData[0].pre_aprobado_por.trim() !== ""
+						) {
+							console.warn("\n\nRequest has been pre-approved, approving...\n");
+							await executeQuery(
+								`UPDATE solicitudes_ausencia
 								SET estado = 3,
 								aprobado_por = '${numEmp}',
 								fecha_aprobacion = GETDATE()
 								WHERE id_solicitud = ${request_id}`,
 								"Error registering request",
-								dbs.tecmamovil);
+								dbs.tecmamovil,
+							);
 
-							await executeQuery(`INSERT INTO VACAPLAN
+							await executeQuery(
+								`INSERT INTO VACAPLAN
 									VALUES(
 										'${requestData[0].id_empleado}',
 										${requestData[0].fecha_inicio},
@@ -3847,18 +4285,20 @@ const resolvers = {
 										1111
 									)`,
 								"Error approving request",
-								dbs.colabora);
-
+								dbs.colabora,
+							);
 						} else {
-							console.warn("\n\nRequest is pending, pre-approving...\n")
-							await executeQuery(`UPDATE solicitudes_ausencia
+							console.warn("\n\nRequest is pending, pre-approving...\n");
+							await executeQuery(
+								`UPDATE solicitudes_ausencia
 												SET estado = 2,
 													autoriza = '${approverData[0].superior_id}',
 													pre_aprobado_por = '${numEmp}',
 													fecha_pre_aprobacion = GETDATE()
 												WHERE id_solicitud = ${request_id}`,
 								"Error registering request",
-								dbs.tecmamovil);
+								dbs.tecmamovil,
+							);
 						}
 
 						return {
@@ -3866,16 +4306,15 @@ const resolvers = {
 							message: "Se registró la solicitud correctamente.",
 						};
 					case "reject":
-						return { success: false, message: "Reject" }
+						return { success: false, message: "Reject" };
 					case "cancel":
-						return { success: false, message: "Cancel" }
+						return { success: false, message: "Cancel" };
 					default:
-						console.log("No action given, cancelling...")
-						return { success: false, message: "No se definió una acción" }
+						console.log("No action given, cancelling...");
+						return { success: false, message: "No se definió una acción" };
 				}
-
 			} catch (error) {
-				console.log("Error handling absence request: ", error)
+				console.log("Error handling absence request: ", error);
 				return {
 					success: false,
 					message: "Ocurrió un error al registrar la solicitud.",
@@ -3933,7 +4372,7 @@ const resolvers = {
 					WHERE
 						CB_CODIGO = '${numEmp}'`,
 					"Error retrieving employee information",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				if (!employeeData || employeeData.length === 0) {
@@ -3956,13 +4395,19 @@ const resolvers = {
 					console.log("User is not eligible for vacation certificate yet");
 					return {
 						success: false,
-						message: "Aún no eres elegible para generar una constancia de vacaciones, debe pasar un año desde tu fecha de ingreso.",
+						message:
+							"Aún no eres elegible para generar una constancia de vacaciones, debe pasar un año desde tu fecha de ingreso.",
 					};
 				}
 
 				// 3. Determine current work-cycle window
-				let anniversary = new Date(now.getFullYear(), ingreso.getMonth(), ingreso.getDate());
-				if (now < anniversary) anniversary.setFullYear(anniversary.getFullYear() - 1);
+				let anniversary = new Date(
+					now.getFullYear(),
+					ingreso.getMonth(),
+					ingreso.getDate(),
+				);
+				if (now < anniversary)
+					anniversary.setFullYear(anniversary.getFullYear() - 1);
 
 				const nextAnniversary = new Date(anniversary);
 				nextAnniversary.setFullYear(anniversary.getFullYear() + 1);
@@ -3978,20 +4423,23 @@ const resolvers = {
 					WHERE employee_id = '${numEmp}'
 					AND generated_at >= '${windowStart}' AND generated_at < '${windowEnd}'`,
 					"Error checking existing vacation certificate",
-					dbs.tecmamovil
+					dbs.tecmamovil,
 				);
 
 				if (existing) {
-					console.log("Existing vacation certificate found: ", existing.file_name);
+					console.log(
+						"Existing vacation certificate found: ",
+						existing.file_name,
+					);
 					// const publicUrl = `https://api.tecmamovilconnect.com/vacation-certificates/${existing.file_name}`;
 					const publicUrl = `http://10.3.1.180:8083/vacation-certificates/${existing.file_name}`;
 					return {
 						success: false,
-						message: "El certificado de vacaciones ya existe para este año laboral.",
+						message:
+							"El certificado de vacaciones ya existe para este año laboral.",
 						pdfUrl: publicUrl,
 					};
 				}
-
 
 				// console.log("Employee data: ", employeeData[0]);
 
@@ -4008,7 +4456,7 @@ const resolvers = {
 						WHERE
 							C.CB_CODIGO = '${numEmp}'`,
 					"Error retrieving employee information",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				function formatDateToSpanish(dateString) {
@@ -4025,7 +4473,10 @@ const resolvers = {
 					formatted = formatted.replace(/ de (\d{4})$/, " del $1");
 
 					// Capitalize the first letter of the month
-					return formatted.replace(/\b(de )([a-z])/, (_, prefix, char) => prefix + char.toUpperCase());
+					return formatted.replace(
+						/\b(de )([a-z])/,
+						(_, prefix, char) => prefix + char.toUpperCase(),
+					);
 				}
 
 				const today = formatDateToSpanish(now);
@@ -4044,11 +4495,17 @@ const resolvers = {
 				const day = fechaIngreso.getDate();
 				const month = fechaIngreso.getMonth();
 
-				const startVacationDate = new Date(Date.UTC(currentYear, month, day + 1));
+				const startVacationDate = new Date(
+					Date.UTC(currentYear, month, day + 1),
+				);
 				const endVacationDate = new Date(Date.UTC(nextYear, month, day + 1));
 
-				pdfData.start_vacation = formatDateToSpanish(startVacationDate.toISOString());
-				pdfData.end_vacation = formatDateToSpanish(endVacationDate.toISOString());
+				pdfData.start_vacation = formatDateToSpanish(
+					startVacationDate.toISOString(),
+				);
+				pdfData.end_vacation = formatDateToSpanish(
+					endVacationDate.toISOString(),
+				);
 
 				let seniority = now.getFullYear() - fechaIngreso.getFullYear();
 
@@ -4060,7 +4517,9 @@ const resolvers = {
 					seniority--;
 				}
 
-				pdfData.seniority_date = formatDateToSpanish(employeeData[0].fecha_ingreso);
+				pdfData.seniority_date = formatDateToSpanish(
+					employeeData[0].fecha_ingreso,
+				);
 				pdfData.seniority_years = seniority;
 
 				let logoName;
@@ -4075,7 +4534,7 @@ const resolvers = {
 
 				const imageBase64 = fs
 					.readFileSync(
-						path.join(__dirname, `../../public/assets/images/${logoName}`)
+						path.join(__dirname, `../../public/assets/images/${logoName}`),
 					)
 					.toString("base64");
 
@@ -4132,8 +4591,8 @@ const resolvers = {
 				Values('${numEmp}', '${file_name}', GETDATE())
 				`,
 					"Error storing vacation certificate metadata",
-					dbs.tecmamovil
-				)
+					dbs.tecmamovil,
+				);
 
 				return {
 					success: true,
@@ -4172,7 +4631,7 @@ const resolvers = {
 				const data = await executeQuery(
 					query,
 					"Error updating info for check in",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				// console.log("Obtained data is: ", data);
@@ -4189,13 +4648,13 @@ const resolvers = {
 			}
 		},
 		assignSurveys: async (_, { input }) => {
-
 			const { employeeId, surveyId, region } = input;
 
 			if (!employeeId || !surveyId || !region) {
 				return {
 					success: false,
-					message: "Invalid input. Please provide employeeId, surveyId, and region.",
+					message:
+						"Invalid input. Please provide employeeId, surveyId, and region.",
 				};
 			}
 
@@ -4236,8 +4695,459 @@ const resolvers = {
 				};
 			}
 		},
+		requestLoan: requireAuth(async (_, { input }, { user }) => {
+			// helper: save pdf into /public/loans
+			const shardPathFromLoanId = (loanId) => {
+				const s = String(loanId).padStart(6, "0");
+				return { shard1: s.slice(0, 3), shard2: s.slice(3, 6) };
+			};
+
+			const saveLoanPdf = async ({ buffer, loanId }) => {
+				const { shard1, shard2 } = shardPathFromLoanId(loanId);
+
+				const relDir = path.join("loans", shard1, shard2);
+				const absDir = path.join(__dirname, "../../public", relDir);
+
+				await fs.promises.mkdir(absDir, { recursive: true });
+
+				const fileName = `PrestamoFA_${loanId}.pdf`;
+				const absPath = path.join(absDir, fileName);
+
+				const tmpPath = absPath + ".tmp";
+
+				await fs.promises.writeFile(tmpPath, buffer);
+				await fs.promises.rename(tmpPath, absPath);
+
+				return {
+					pdf_file_name: fileName,
+					pdf_relative_path: path.join(relDir, fileName).replaceAll("\\", "/"),
+				};
+			};
+
+			try {
+				if (!user) throw new Error("Unauthorized");
+
+				const { amount, weeks } = input;
+				const parsedAmount = Number(amount);
+				const parsedWeeks = Number(weeks);
+
+				if (!Number.isFinite(parsedAmount) || parsedAmount <= 0)
+					return { success: false, message: "Monto inválido." };
+
+				if (!Number.isFinite(parsedWeeks) || !Number.isInteger(parsedWeeks))
+					return { success: false, message: "Semanas inválidas." };
+
+				if (parsedWeeks < 2)
+					return { success: false, message: "El plazo mínimo es de 2 semanas." };
+
+				const safeAmount = parseFloat(parsedAmount.toFixed(2));
+				const safeWeeks = parsedWeeks;
+
+				const { empId, region } = user;
+				const BUSINESS_TZ = "America/Denver";
+				const now = DateTime.now().setZone(BUSINESS_TZ);
+
+				const dbs = await selectRegion(region);
+
+				/* ===========================
+				   PHASE 1: READ + VALIDATE (NO TX)
+				   =========================== */
+
+				// 1) Map NIVEL indices by region
+				const code = {};
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.proyecto = "0";
+						code.planta = "7";
+						break;
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.proyecto = "5";
+						code.area = "6";
+						code.planta = "1";
+						break;
+					default:
+						return { success: false, message: "Región no soportada." };
+				}
+
+				// 2) Employee details (PARAMETERIZED)
+				const userDetails = await executeParameterizedQuery(
+					`
+					SELECT
+						C.CB_CODIGO as employee_id,
+						C.CB_NIVEL${code.area}       	AS area_code,
+						C.CB_NIVEL${code.supervisor} 	AS supervisor_code,
+						C.CB_NIVEL${code.planta}     	AS plant_code,
+						C.CB_NIVEL${code.proyecto}   	AS project_code,
+						C.CB_TURNO 					AS turn_code,
+						C.CB_PUESTO 					AS job_title_code,
+						C.CB_CLASIFI 					AS classification,
+						C.CB_NOMBRES 					AS first_name,
+						C.CB_APE_PAT 					AS last_name_pat,
+						C.CB_APE_MAT 					AS last_name_mat,
+						RS.RS_NOMBRE 					AS company_name
+					FROM COLABORA AS C
+					INNER JOIN RPATRON AS RP ON RP.TB_CODIGO = C.CB_PATRON
+					INNER JOIN RSOCIAL AS RS ON RS.RS_CODIGO = RP.RS_CODIGO
+					WHERE C.CB_CODIGO = @param1
+					`,
+					[empId],
+					"Error fetching user details",
+					dbs.colabora
+				);
+
+				if (!userDetails?.length) {
+					return {
+						success: false,
+						message: "Empleado no encontrado para esta región.",
+					};
+				}
+
+				const u = userDetails[0];
+
+				// 3) Balance (outside TX)
+				const balanceResult = await executeParameterizedQuery(
+					`
+					SELECT
+						SUM(AH.AH_SALDO) * 2 AS SaldoFA
+					FROM AHORRO AH
+					WHERE AH.CB_CODIGO = @param1
+						AND AH.AH_TIPO = '2'
+						AND AH.AH_STATUS = 0
+						AND AH.AH_FECHA = (
+							SELECT MAX(AH_FECHA)
+							FROM AHORRO
+							WHERE CB_CODIGO = @param1
+								AND AH_STATUS = 0
+								AND AH_TIPO = '2'
+						)
+					`,
+					[empId],
+					"Error fetching balance",
+					dbs.colabora
+				);
+
+				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
+				if (!Number.isFinite(balance) || balance <= 0)
+					return { success: false, message: "No fue posible obtener el saldo." };
+
+				const minAmount = parseFloat((balance * 0.1).toFixed(2));
+				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
+
+				if (safeAmount < minAmount || safeAmount > maxAmount)
+					return { success: false, message: "Monto fuera de límites permitidos." };
+
+				// 4) Cycle config
+				const cycleResult = await executeParameterizedQuery(
+					`
+					SELECT TOP 1 semana_inicial, semana_final
+					FROM Prestamos
+					ORDER BY fecha DESC
+					`,
+					[],
+					"Error fetching cycle",
+					"tecmamovilcentral"
+				);
+
+				const initialWeek = cycleResult?.[0]?.semana_inicial;
+				const finalWeek = cycleResult?.[0]?.semana_final;
+
+				if (!initialWeek || !finalWeek)
+					return { success: false, message: "No hay periodo configurado." };
+
+				const getFirstSaturday = (year) => {
+					let first = DateTime.fromObject(
+						{ year, month: 1, day: 1 },
+						{ zone: BUSINESS_TZ }
+					);
+					while (first.weekday !== 6) first = first.plus({ days: 1 });
+					return first.startOf("day");
+				};
+
+				const firstSaturday = getFirstSaturday(now.year);
+				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
+				const loanEnd = firstSaturday.plus({ weeks: finalWeek - 1 }).endOf("week");
+
+				if (now < loanStart || now > loanEnd)
+					return { success: false, message: "Fuera del periodo permitido." };
+
+				const currentWeek =
+					Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
+				const maxWeeks = finalWeek - currentWeek + 1;
+
+				if (safeWeeks > maxWeeks)
+					return { success: false, message: "Semanas exceden el límite." };
+
+				// 5) Old system checks (done OUTSIDE TX)
+				const oldRequestedLoan = await executeParameterizedQuery(
+					`
+					DECLARE @CurrentYear INT = YEAR(GETDATE());
+					DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear,1,1);
+					DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear+1,1,1);
+
+					SELECT CASE WHEN EXISTS (
+						SELECT 1
+						FROM K_Solicitudes
+						WHERE Fecha >= @StartDate
+							AND Fecha < @EndDate
+							AND No = @param1
+							AND Carta = 'PtmoFA'
+					)
+					THEN 'true' ELSE 'false' END AS status;
+					`,
+					[empId],
+					"Error fetching existing loan request (old kioskotek)",
+					dbs.kioskotek
+				);
+
+				const oldExistingLoan = await executeParameterizedQuery(
+					`
+					DECLARE @CurrentYear INT = YEAR(GETDATE());
+
+					SELECT CASE WHEN EXISTS (
+						SELECT 1
+						FROM PRESTAMO
+						WHERE YEAR(PR_FECHA) = @CurrentYear
+							AND CB_CODIGO = @param1
+							AND PR_TIPO = '4'
+					)
+					THEN 'true' ELSE 'false' END AS status;
+					`,
+					[empId],
+					"Error fetching existing loan (old colabora)",
+					dbs.colabora
+				);
+
+				const oldLoanRequested = oldRequestedLoan?.[0]?.status === "true";
+				const oldLoanExists = oldExistingLoan?.[0]?.status === "true";
+
+				if (oldLoanRequested) {
+					return {
+						success: false,
+						message: "Tienes una solicitud de préstamo pendiente de aprobación.",
+					};
+				}
+				if (oldLoanExists) {
+					return {
+						success: false,
+						message: "Has solicitado un préstamo y ha sido entregado.",
+					};
+				}
+
+				// 6) Financial calcs (kept as you had them — NOT FIXED)
+				const interestRate = 0.159;
+				const interestTotal = parseFloat(
+					((interestRate * safeWeeks * safeAmount) / 100).toFixed(2)
+				);
+				const totalToPay = parseFloat((safeAmount + interestTotal).toFixed(2));
+				const weeklyDiscount = parseFloat((totalToPay / safeWeeks).toFixed(2));
+
+				/* ===========================
+				   PHASE 2: TX (Loans only)
+				   - check duplicate
+				   - insert + OUTPUT loan_id
+				   =========================== */
+
+				const pool = await poolPromises["tecmamovilcentral"];
+				const tx = new sql.Transaction(pool);
+
+				let loanId;
+
+				await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+				try {
+					// Duplicate check (only NEW Loans)
+					const existingLoan = await executeParameterizedQueryTx(
+						`
+						SELECT TOP 1 loan_id
+						FROM Loans WITH (UPDLOCK, HOLDLOCK)
+						WHERE employee_id = @param1
+							AND YEAR(requested_at) = YEAR(GETDATE())
+							AND status IN ('PENDING','APPROVED','ACTIVE')
+						ORDER BY requested_at DESC
+						`,
+						[empId],
+						"Error checking existing loan",
+						tx
+					);
+
+					if (existingLoan.length > 0) {
+						await tx.rollback();
+						return {
+							success: false,
+							message: "Ya existe un préstamo activo este año.",
+						};
+					}
+
+					// Insert and get loan_id
+					const insertResult = await executeParameterizedQueryTx(
+						`
+						INSERT INTO Loans (
+							employee_id,
+							employee_name,
+							region_id,
+							plant_code,
+							project_code,
+							area_code,
+							supervisor_code,
+							turn_code,
+							job_title_code,
+							classification,
+							amount,
+							weeks,
+							interest_rate,
+							interest_total,
+							total_to_pay,
+							weekly_discount,
+							status
+						)
+						OUTPUT INSERTED.loan_id
+						VALUES (
+							@param1, @param2, @param3, @param4, @param5,
+							@param6, @param7, @param8, @param9, @param10,
+							@param11, @param12, @param13,
+							@param14, @param15, @param16,
+							'PENDING'
+						)
+						`,
+						[
+							empId,
+							`${u.first_name}${u.last_name_pat ? ` ${u.last_name_pat}` : ""}${u.last_name_mat ? ` ${u.last_name_mat}` : ""}`.trim(),
+							region === "JRZ" ? 1 : region === "SAL" ? 2 : region === "MTY" ? 3 : region === "TIJ" ? 4 : 0,
+							u.plant_code,
+							u.project_code,
+							u.area_code,
+							u.supervisor_code,
+							u.turn_code,
+							u.job_title_code,
+							u.classification,
+							safeAmount,
+							safeWeeks,
+							interestRate,
+							interestTotal,
+							totalToPay,
+							weeklyDiscount,
+						],
+						"Error inserting loan",
+						tx
+					);
+
+					loanId = insertResult?.[0]?.loan_id;
+
+					if (!loanId) {
+						throw new Error("No loan_id returned from insert.");
+					}
+
+					await tx.commit();
+				} catch (txErr) {
+					try { await tx.rollback(); } catch (_) { }
+					console.error("requestLoan TX error:", txErr);
+					return { success: false, message: "Error al procesar la solicitud." };
+				}
+
+				/* ===========================
+				   PHASE 3: PDF (no TX)
+				   - generate buffer
+				   - save under public/loans
+				   - update loan row with pdf metadata
+				   =========================== */
+
+				try {
+					function formatDateToSpanish(dateString) {
+						// Parse the date and convert it to local time
+						const localDate = new Date(dateString);
+						// console.log("Date string is: ", dateString);
+						// console.log("Local date string is: ", localDate);
+
+						const options = {
+							year: "numeric",
+							month: "long",
+							day: "numeric",
+							timeZone: "UTC",
+						};
+
+						// Get the formatted date string in Spanish (long format for months)
+						return localDate.toLocaleDateString("es-ES", options);
+					}
+
+					const formattedDate = formatDateToSpanish(new Date());
+					const full_name = `${u.last_name_pat ? `${u.last_name_pat} ` : ""}${u.last_name_mat ? `${u.last_name_mat}` : ""}${(u.last_name_pat || u.last_name_mat) ? ", " : ""}${u.first_name}`.trim();
+
+					const pdfData = {
+						...u,
+						date: formattedDate,
+						full_name,
+						requested_loan: safeAmount.toFixed(2),
+						loan_weeks: safeWeeks.toFixed(2),
+						interest: interestTotal.toFixed(2),
+						total: totalToPay.toFixed(2),
+						weekly_discount: weeklyDiscount.toFixed(2),
+					};
+
+					// Logo pick (same as you had it)
+					let logoName;
+					if ((u.project_code || "").trim() === "H09") logoName = "FLEXSTEEL.png";
+					else if ((u.project_code || "").trim() === "H75") logoName = "CLEAR.png";
+					else logoName = "LOGOTECMA.png";
+
+					const imageBase64 = fs
+						.readFileSync(path.join(__dirname, `../../public/assets/images/${logoName}`))
+						.toString("base64");
+
+					pdfData.imageBase64 = imageBase64;
+
+					const fileBuffer = await generateSavingsLoanPDF({ data: pdfData });
+
+					const { pdf_file_name, pdf_relative_path } = await saveLoanPdf({
+						buffer: fileBuffer,
+						loanId,
+					});
+
+					// Update row with PDF metadata (separate query)
+					await executeParameterizedQuery(
+						`
+						UPDATE Loans
+						SET pdf_file_name = @param1,
+							pdf_relative_path = @param2,
+							updated_at = SYSDATETIME()
+						WHERE loan_id = @param3
+						`,
+						[pdf_file_name, pdf_relative_path, loanId],
+						"Error updating loan PDF metadata",
+						"tecmamovilcentral"
+					);
+
+				} catch (pdfErr) {
+					console.error("PDF generation/save error:", pdfErr);
+
+					// Optional: store note so admin can re-generate later
+					await executeParameterizedQuery(
+						`
+						UPDATE Loans
+						SET notes = LEFT(CONCAT(ISNULL(notes,''), ' | PDF_ERROR: ', @param1), 250),
+							updated_at = SYSDATETIME()
+						WHERE loan_id = @param2
+						`,
+						[String(pdfErr?.message || "PDF error"), loanId],
+						"Error updating loan note",
+						"tecmamovilcentral"
+					);
+
+					// Still treat the loan request as created; PDF can be regenerated later
+				}
+
+				return { success: true, message: "Solicitud registrada correctamente." };
+			} catch (err) {
+				console.error("requestLoan error:", err);
+				return { success: false, message: "Error al procesar la solicitud." };
+			}
+		}),
 		testMutation: async () => {
-			return "Done"
+			return "Done";
 		},
 	},
 };

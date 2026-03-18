@@ -341,7 +341,7 @@ async function generatePayrollPDF({ data, payroll }) {
 	});
 	const page = await browser.newPage();
 
-	console.log("Payroll: ", payroll);
+	// console.log("Payroll: ", payroll);
 	const htmlTemplate = fs.readFileSync(
 		path.join(__dirname, "./templates/payrollTemplate.html"),
 		"utf8"

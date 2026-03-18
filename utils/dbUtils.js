@@ -6,7 +6,7 @@ const executeQuery = async (query, errorMessage, dbName) => {
 		// console.log("Query is: ", query);
 		const pool = await poolPromises[dbName];
 		const result = await pool.request().query(query);
-		console.log(result);
+		// console.log("executeQuery result: ", result);
 		return result.recordset;
 	} catch (err) {
 		console.error("Error during query execution: ", err);
@@ -19,11 +19,11 @@ const executeQueryNew = async (query, errorMessage, dbName) => {
 		// console.log("Query is: ", query);
 		const pool = await poolPromises[dbName];
 		const result = await pool.request().query(query);
-		console.log(result);
+		// console.log("executeQueryNew result: ", result);
 		return result.recordset[0];
 	} catch (err) {
 		console.error("Error during query execution: ", err);
-		return { success: false, message: errorMessage }
+		return { success: false, message: errorMessage };
 		throw new Error(errorMessage);
 	}
 };
@@ -32,7 +32,7 @@ const executeParameterizedQuery = async (
 	query,
 	params,
 	errorMessage,
-	dbName
+	dbName,
 ) => {
 	console.log("Executing parameterized query");
 	try {
@@ -67,8 +67,30 @@ const executeParameterizedQuery = async (
 	}
 };
 
+const executeParameterizedQueryTx = async (
+	query,
+	params,
+	errorMessage,
+	transaction,
+) => {
+	try {
+		const request = transaction.request();
+
+		params.forEach((param, index) => {
+			request.input(`param${index + 1}`, param);
+		});
+
+		const result = await request.query(query);
+		return result.recordset;
+	} catch (err) {
+		console.error("Error during TX query:", err);
+		throw new Error(errorMessage);
+	}
+};
+
 module.exports = {
 	executeQuery,
 	executeQueryNew,
 	executeParameterizedQuery,
+	executeParameterizedQueryTx,
 };
