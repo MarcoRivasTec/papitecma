@@ -188,7 +188,7 @@ const resolvers = {
 					"tecmamovilcentral",
 				);
 
-				console.log("Result is: ", versiones)
+				// console.log("Result is: ", versiones)
 
 				if (!versiones.length) {
 					return { upToDate: true, critical: false };
