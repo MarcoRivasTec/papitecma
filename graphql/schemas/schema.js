@@ -468,9 +468,21 @@ const typeDefs = gql`
 		download_url: String
 	}
 
+	input VersionInput {
+		currVer: String!
+		platform: String!
+	}
+
+	type URLFileResponse {
+		success: Boolean!
+		message: String
+		file_url: String
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
+		Version(input: VersionInput!): version
 		Versions(currVer: String!): version
 		UserFind(numEmp: String!, region: String!): UserFind
 		ImageBlob(numEmp: String!, region: String!): ImageBlob
@@ -519,6 +531,9 @@ const typeDefs = gql`
 
 		downloadLoanFileInternal(loan_id: Int!): LoanFileResponse
 		RequestLoanDownloadURL(loan_id: Int!): LoanURLFileResponse
+
+		PrivacyNoticeEligibility: Response!
+		PrivacyNoticeURL: URLFileResponse!
 	}
 
 	type Mutation {

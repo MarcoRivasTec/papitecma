@@ -33,6 +33,7 @@ const {
 const oldKey = process.env.OLD_KEY;
 const newKey = process.env.NEW_KEY;
 const notifKey = process.env.NOTIF_KEY;
+const fileKey = process.env.FILE_DOWNLOAD_SECRET;
 const path = require("path");
 const fs = require("fs");
 const Numalet = require("numalet");
@@ -116,6 +117,112 @@ const resolvers = {
 				success: true,
 				message: `Se inicio sesión correctamente para ${name.CB_NOMBRES}`,
 			};
+		},
+		Version: async (_, { input }) => {
+			const parseVersion = (value) => {
+				if (typeof value !== "string") return null;
+
+				const raw = value.trim().toLowerCase();
+
+				// Allows: 1.1.5 or 1.1.5dev
+				if (!/^\d+\.\d+\.\d+(dev)?$/.test(raw)) {
+					return null;
+				}
+
+				const isDev = raw.endsWith("dev");
+				const numericPart = isDev ? raw.slice(0, -3) : raw;
+
+				const [major, minor, patch] = numericPart.split(".").map(Number);
+
+				return {
+					raw,
+					isDev,
+					numericPart,
+					major,
+					minor,
+					patch,
+				};
+			};
+
+			const compareVersions = (a, b) => {
+				if (a.major !== b.major) return a.major - b.major;
+				if (a.minor !== b.minor) return a.minor - b.minor;
+				if (a.patch !== b.patch) return a.patch - b.patch;
+
+				// Same numeric version:
+				// treat 1.1.5 and 1.1.5dev as equivalent for update checks
+				return 0;
+			};
+
+			try {
+				console.log("Input is:", input);
+
+				if (!input || typeof input !== "object") {
+					throw new Error("Invalid input.");
+				}
+
+				let { currVer, platform } = input;
+
+				platform = String(platform || "").trim().toLowerCase();
+				currVer = String(currVer || "").trim();
+
+				if (!["ios", "android"].includes(platform)) {
+					throw new Error("Invalid platform.");
+				}
+
+				const parsedCurrent = parseVersion(currVer);
+				if (!parsedCurrent) {
+					throw new Error(
+						"Invalid currVer format. Expected values like 1.1.5 or 1.1.5dev."
+					);
+				}
+
+				const versiones = await executeParameterizedQuery(
+					`
+					SELECT id_version, relevancia, fecha, notas, platform
+					FROM Versiones
+					WHERE platform IN (@param1, 'all')
+					ORDER BY fecha DESC
+			`,
+					[platform],
+					"Error fetching version information",
+					"tecmamovilcentral",
+				);
+
+				// console.log("Result is: ", versiones)
+
+				if (!versiones.length) {
+					return { upToDate: true, critical: false };
+				}
+
+				const newerVersions = versiones.filter((row) => {
+					const parsedDbVersion = parseVersion(String(row.id_version || "").trim());
+
+					// Ignore malformed DB rows instead of crashing
+					if (!parsedDbVersion) return false;
+
+					return compareVersions(parsedDbVersion, parsedCurrent) > 0;
+				});
+
+				if (newerVersions.length > 0) {
+					const important = newerVersions.some(
+						(version) => Number(version.relevancia) >= 3
+					);
+
+					return {
+						upToDate: false,
+						critical: important,
+					};
+				}
+
+				return {
+					upToDate: true,
+					critical: false,
+				};
+			} catch (error) {
+				console.error("Version resolver error:", error);
+				throw error;
+			}
 		},
 		Versions: async (_, { currVer }) => {
 			const versiones = await executeQuery(
@@ -216,25 +323,25 @@ const resolvers = {
 			);
 
 			let restrictedSections = [];
-			// if (numEmp !== "900874") {
-			// 	restrictedSections = await executeQuery(
-			// 		`
-			// 	SELECT DISTINCT s.section_name
-			// 	FROM MenuAccessRestrictions AS mar
-			// 	INNER JOIN Sections AS s ON mar.section_id = s.section_id
-			// 	LEFT JOIN Regions AS r ON mar.region_id = r.region_id
-			// 	WHERE 
-			// 		mar.is_active = 1
-			// 		AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
-			// 		AND (mar.region_id IS NULL OR r.region_code = '${region}')
-			// 		AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
-			// 		AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
-			// 		AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
-			// 		AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
-			// 		"Error fetching restricted sections for user",
-			// 		"tecmamovilcentral",
-			// 	);
-			// }
+			if (numEmp !== "900874") {
+				restrictedSections = await executeQuery(
+					`
+				SELECT DISTINCT s.section_name
+				FROM MenuAccessRestrictions AS mar
+				INNER JOIN Sections AS s ON mar.section_id = s.section_id
+				LEFT JOIN Regions AS r ON mar.region_id = r.region_id
+				WHERE 
+					mar.is_active = 1
+					AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
+					AND (mar.region_id IS NULL OR r.region_code = '${region}')
+					AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
+					AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
+					AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
+					AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
+					"Error fetching restricted sections for user",
+					"tecmamovilcentral",
+				);
+			}
 
 			// console.log("Restricted sections: ", restrictedSections);
 
@@ -1629,7 +1736,7 @@ const resolvers = {
 				const base =
 					process.env.HOST === "PRODUCTION"
 						? "https://api.tecmamovilconnect.com"
-						: "http://10.3.1.180:8083";
+						: "http://10.3.3.218:8083";
 
 				return {
 					success: true,
@@ -2047,7 +2154,217 @@ const resolvers = {
 				}
 
 			}
-		)
+		),
+		PrivacyNoticeEligibility: requireAuth(
+			async (_, __, { user }) => {
+				if (!user) return {
+					success: false,
+					message: "No autorizado",
+				};
+
+				const { empId, region } = user;
+
+				const dbs = await selectRegion(region);
+
+				let code = {};
+
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.planta = "7";
+						break;
+
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.area = "6";
+						code.planta = "1";
+						break;
+
+					default:
+						return {
+							success: false,
+							message: `Región no soportada`,
+						};
+				}
+
+				const userDetails = await executeQuery(
+					`
+					SELECT CB_NIVEL${code.supervisor} AS project_id,
+						CB_NIVEL${code.area} AS area_id
+						FROM COLABORA
+						WHERE CB_CODIGO = '${empId}'
+					`,
+					"Error fetching user project",
+					dbs.colabora
+				);
+
+				if (!userDetails?.length) {
+					return {
+						success: false,
+						message: "Empleado no encontrado para esta región",
+					};
+				}
+
+				const projectId = String(userDetails[0].project_id || "").trim();
+				const areaId = String(userDetails[0].area_id || "").trim();
+
+				const allowedProjectIds = ["H66"];
+
+				if (empId === "900874") {
+					return {
+						success: true,
+						message: "Empleado elegible para aviso de privacidad",
+					};
+				} else {
+
+					if (!allowedProjectIds.includes(projectId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para este proyecto",
+						};
+					}
+
+					const allowedAreaIds = [
+						"66-002",
+						"02-004",
+						"02-003",
+					];
+
+					if (!allowedAreaIds.includes(areaId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para esta área",
+						};
+					}
+
+					return {
+						success: true,
+						message: "Empleado elegible para aviso de privacidad",
+					};
+				}
+			}
+		),
+		PrivacyNoticeURL: requireAuth(
+			async (_, __, { user }) => {
+				if (!user) return {
+					success: false,
+					message: "No autorizado",
+				};
+
+				const { empId, region } = user;
+
+				const dbs = await selectRegion(region);
+
+				let code = {};
+
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.planta = "7";
+						break;
+
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.area = "6";
+						code.planta = "1";
+						break;
+
+					default:
+						return {
+							success: false,
+							message: `Región no soportada`,
+						};
+				}
+
+				const userDetails = await executeQuery(
+					`
+					SELECT CB_NIVEL${code.supervisor} AS project_id,
+						CB_NIVEL${code.area} AS area_id
+						FROM COLABORA
+						WHERE CB_CODIGO = '${empId}'
+					`,
+					"Error fetching user project",
+					dbs.colabora
+				);
+
+				if (!userDetails?.length) {
+					return {
+						success: false,
+						message: "Empleado no encontrado para esta región",
+					};
+				}
+
+				const projectId = String(userDetails[0].project_id || "").trim();
+				const areaId = String(userDetails[0].area_id || "").trim();
+
+				const allowedProjectIds = ["H66"];
+
+				if (empId === "900874") {
+					console.log("Allowed")
+				} else {
+					if (!allowedProjectIds.includes(projectId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para este proyecto",
+						};
+					}
+
+					const allowedAreaIds = [
+						"66-002",
+						"02-004",
+						"02-003",
+					];
+
+					if (!allowedAreaIds.includes(areaId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para esta área",
+						};
+					}
+				}
+
+				const fileName = "politica_de_calidad_dynamco.pdf";
+
+				if (!/^[a-zA-Z0-9._-]+$/.test(fileName)) {
+					return {
+						success: false,
+						message: "Nombre de archivo inválido",
+					};
+				}
+
+				const token = jwt.sign(
+					{
+						typ: "privacy_notice_download",
+						file: fileName,
+						empId,
+						region,
+						projectId,
+						areaId
+					},
+					fileKey,
+					{ expiresIn: "2m" }
+				);
+
+				const base =
+					process.env.HOST === "PRODUCTION"
+						? "https://api.tecmamovilconnect.com"
+						: "http://10.3.3.218:8083";
+
+				return {
+					success: true,
+					message: "URL de política de privacidad generada",
+					file_url: `${base}/download/privacy-notice?token=${encodeURIComponent(token)}`,
+				};
+			}
+		),
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
