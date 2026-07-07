@@ -473,6 +473,12 @@ const typeDefs = gql`
 		platform: String!
 	}
 
+	type URLFileResponse {
+		success: Boolean!
+		message: String
+		file_url: String
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -525,6 +531,9 @@ const typeDefs = gql`
 
 		downloadLoanFileInternal(loan_id: Int!): LoanFileResponse
 		RequestLoanDownloadURL(loan_id: Int!): LoanURLFileResponse
+
+		PrivacyNoticeEligibility: Response!
+		PrivacyNoticeURL: URLFileResponse!
 	}
 
 	type Mutation {

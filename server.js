@@ -14,6 +14,7 @@ const http = require("http");
 const https = require("https");
 const { ApolloServerPluginLandingPageDisabled } = require("apollo-server-core");
 const { executeParameterizedQuery } = require("./utils/dbUtils");
+const employeeRoutes = require("./routes/employee.routes");
 
 function getUserFromAuthHeader(req) {
 
@@ -162,6 +163,73 @@ app.get("/", (req, res) => {
 	res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+const fileKey = process.env.FILE_DOWNLOAD_SECRET;
+
+const PRIVACY_NOTICE_DIR = path.resolve(
+	process.cwd(),
+	"private",
+	"privacy-notices"
+);
+
+app.get("/download/privacy-notice", async (req, res) => {
+	try {
+		const { token } = req.query;
+
+		if (!token) {
+			return res.status(400).json({
+				success: false,
+				message: "Missing token",
+			});
+		}
+
+		const payload = jwt.verify(token, fileKey);
+
+		if (payload.typ !== "privacy_notice_download") {
+			return res.status(403).json({
+				success: false,
+				message: "Invalid token type",
+			});
+		}
+
+		const fileName = String(payload.file || "").trim();
+
+		if (!/^[a-zA-Z0-9._-]+$/.test(fileName)) {
+			return res.status(400).json({
+				success: false,
+				message: "Invalid filename",
+			});
+		}
+
+		const filePath = path.join(PRIVACY_NOTICE_DIR, fileName);
+
+		if (!filePath.startsWith(PRIVACY_NOTICE_DIR)) {
+			return res.status(403).json({
+				success: false,
+				message: "Invalid file path",
+			});
+		}
+
+		if (!fs.existsSync(filePath)) {
+			return res.status(404).json({
+				success: false,
+				message: "File not found",
+			});
+		}
+
+		res.setHeader("Content-Type", "application/pdf");
+		res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+
+		return res.sendFile(filePath);
+	} catch (error) {
+		console.error("Privacy notice download error:", error);
+
+		return res.status(401).json({
+			success: false,
+			message: "Invalid or expired token",
+		});
+	}
+});
+
 app.get("/vacation-certificates/:fileName", (req, res) => {
 	console.log("Requesting vacation certificate file:", req.params.fileName);
 	const { fileName } = req.params;
@@ -293,6 +361,8 @@ app.get("/download/loan", async (req, res) => {
 	}
 
 });
+
+app.use("/employee", employeeRoutes);
 
 console.log("Creating server");
 const apolloServer = new ApolloServer({

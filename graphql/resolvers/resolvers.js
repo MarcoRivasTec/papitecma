@@ -33,6 +33,7 @@ const {
 const oldKey = process.env.OLD_KEY;
 const newKey = process.env.NEW_KEY;
 const notifKey = process.env.NOTIF_KEY;
+const fileKey = process.env.FILE_DOWNLOAD_SECRET;
 const path = require("path");
 const fs = require("fs");
 const Numalet = require("numalet");
@@ -322,25 +323,25 @@ const resolvers = {
 			);
 
 			let restrictedSections = [];
-			// if (numEmp !== "900874") {
-			// 	restrictedSections = await executeQuery(
-			// 		`
-			// 	SELECT DISTINCT s.section_name
-			// 	FROM MenuAccessRestrictions AS mar
-			// 	INNER JOIN Sections AS s ON mar.section_id = s.section_id
-			// 	LEFT JOIN Regions AS r ON mar.region_id = r.region_id
-			// 	WHERE 
-			// 		mar.is_active = 1
-			// 		AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
-			// 		AND (mar.region_id IS NULL OR r.region_code = '${region}')
-			// 		AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
-			// 		AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
-			// 		AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
-			// 		AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
-			// 		"Error fetching restricted sections for user",
-			// 		"tecmamovilcentral",
-			// 	);
-			// }
+			if (numEmp !== "900874") {
+				restrictedSections = await executeQuery(
+					`
+				SELECT DISTINCT s.section_name
+				FROM MenuAccessRestrictions AS mar
+				INNER JOIN Sections AS s ON mar.section_id = s.section_id
+				LEFT JOIN Regions AS r ON mar.region_id = r.region_id
+				WHERE 
+					mar.is_active = 1
+					AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
+					AND (mar.region_id IS NULL OR r.region_code = '${region}')
+					AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
+					AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
+					AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
+					AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
+					"Error fetching restricted sections for user",
+					"tecmamovilcentral",
+				);
+			}
 
 			// console.log("Restricted sections: ", restrictedSections);
 
@@ -1735,7 +1736,7 @@ const resolvers = {
 				const base =
 					process.env.HOST === "PRODUCTION"
 						? "https://api.tecmamovilconnect.com"
-						: "http://10.3.1.180:8083";
+						: "http://10.3.3.218:8083";
 
 				return {
 					success: true,
@@ -2153,7 +2154,217 @@ const resolvers = {
 				}
 
 			}
-		)
+		),
+		PrivacyNoticeEligibility: requireAuth(
+			async (_, __, { user }) => {
+				if (!user) return {
+					success: false,
+					message: "No autorizado",
+				};
+
+				const { empId, region } = user;
+
+				const dbs = await selectRegion(region);
+
+				let code = {};
+
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.planta = "7";
+						break;
+
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.area = "6";
+						code.planta = "1";
+						break;
+
+					default:
+						return {
+							success: false,
+							message: `Región no soportada`,
+						};
+				}
+
+				const userDetails = await executeQuery(
+					`
+					SELECT CB_NIVEL${code.supervisor} AS project_id,
+						CB_NIVEL${code.area} AS area_id
+						FROM COLABORA
+						WHERE CB_CODIGO = '${empId}'
+					`,
+					"Error fetching user project",
+					dbs.colabora
+				);
+
+				if (!userDetails?.length) {
+					return {
+						success: false,
+						message: "Empleado no encontrado para esta región",
+					};
+				}
+
+				const projectId = String(userDetails[0].project_id || "").trim();
+				const areaId = String(userDetails[0].area_id || "").trim();
+
+				const allowedProjectIds = ["H66"];
+
+				if (empId === "900874") {
+					return {
+						success: true,
+						message: "Empleado elegible para aviso de privacidad",
+					};
+				} else {
+
+					if (!allowedProjectIds.includes(projectId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para este proyecto",
+						};
+					}
+
+					const allowedAreaIds = [
+						"66-002",
+						"02-004",
+						"02-003",
+					];
+
+					if (!allowedAreaIds.includes(areaId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para esta área",
+						};
+					}
+
+					return {
+						success: true,
+						message: "Empleado elegible para aviso de privacidad",
+					};
+				}
+			}
+		),
+		PrivacyNoticeURL: requireAuth(
+			async (_, __, { user }) => {
+				if (!user) return {
+					success: false,
+					message: "No autorizado",
+				};
+
+				const { empId, region } = user;
+
+				const dbs = await selectRegion(region);
+
+				let code = {};
+
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.planta = "7";
+						break;
+
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.area = "6";
+						code.planta = "1";
+						break;
+
+					default:
+						return {
+							success: false,
+							message: `Región no soportada`,
+						};
+				}
+
+				const userDetails = await executeQuery(
+					`
+					SELECT CB_NIVEL${code.supervisor} AS project_id,
+						CB_NIVEL${code.area} AS area_id
+						FROM COLABORA
+						WHERE CB_CODIGO = '${empId}'
+					`,
+					"Error fetching user project",
+					dbs.colabora
+				);
+
+				if (!userDetails?.length) {
+					return {
+						success: false,
+						message: "Empleado no encontrado para esta región",
+					};
+				}
+
+				const projectId = String(userDetails[0].project_id || "").trim();
+				const areaId = String(userDetails[0].area_id || "").trim();
+
+				const allowedProjectIds = ["H66"];
+
+				if (empId === "900874") {
+					console.log("Allowed")
+				} else {
+					if (!allowedProjectIds.includes(projectId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para este proyecto",
+						};
+					}
+
+					const allowedAreaIds = [
+						"66-002",
+						"02-004",
+						"02-003",
+					];
+
+					if (!allowedAreaIds.includes(areaId)) {
+						return {
+							success: false,
+							message: "Empleado no autorizado para esta área",
+						};
+					}
+				}
+
+				const fileName = "politica_de_calidad_dynamco.pdf";
+
+				if (!/^[a-zA-Z0-9._-]+$/.test(fileName)) {
+					return {
+						success: false,
+						message: "Nombre de archivo inválido",
+					};
+				}
+
+				const token = jwt.sign(
+					{
+						typ: "privacy_notice_download",
+						file: fileName,
+						empId,
+						region,
+						projectId,
+						areaId
+					},
+					fileKey,
+					{ expiresIn: "2m" }
+				);
+
+				const base =
+					process.env.HOST === "PRODUCTION"
+						? "https://api.tecmamovilconnect.com"
+						: "http://10.3.3.218:8083";
+
+				return {
+					success: true,
+					message: "URL de política de privacidad generada",
+					file_url: `${base}/download/privacy-notice?token=${encodeURIComponent(token)}`,
+				};
+			}
+		),
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
