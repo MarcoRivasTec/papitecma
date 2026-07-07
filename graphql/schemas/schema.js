@@ -479,6 +479,41 @@ const typeDefs = gql`
 		file_url: String
 	}
 
+	enum CheckInType {
+		CHECK_IN
+		CHECK_OUT
+	}
+
+	input CheckInInput {
+		type: CheckInType!
+		latitude: Float!
+		longitude: Float!
+		accuracy: Float
+		timestamp: String!
+		timezone: String!
+		deviceId: String
+		platform: String
+		appVersion: String
+		idempotencyKey: String!
+	}
+
+	type CheckInRecord {
+		id: ID
+		type: String
+		registeredAt: String
+		geofenceName: String
+		latitude: Float
+		longitude: Float
+		accuracy: Float
+	}
+
+	type CheckInResponse {
+		success: Boolean!
+		status: String
+		message: String!
+		checkIn: CheckInRecord
+	}
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -601,10 +636,11 @@ const typeDefs = gql`
 		generateVacationCertificate(
 			input: GenerateVacationCertificateInput!
 		): GenerateVacationCertificateResponse!
-		handleCheckIn(input: HandleCheckInInput!): HandleCheckInResponse!
 		assignSurveys(input: AssignSurveysInput!): AssignSurveysResponse!
 		requestLoan(input: RequestLoanInput!): Response!
 		testMutation: String
+
+		handleCheckIn(input: CheckInInput!): CheckInResponse!
 	}
 `;
 

@@ -163,7 +163,9 @@ const resolvers = {
 
 				let { currVer, platform } = input;
 
-				platform = String(platform || "").trim().toLowerCase();
+				platform = String(platform || "")
+					.trim()
+					.toLowerCase();
 				currVer = String(currVer || "").trim();
 
 				if (!["ios", "android"].includes(platform)) {
@@ -173,7 +175,7 @@ const resolvers = {
 				const parsedCurrent = parseVersion(currVer);
 				if (!parsedCurrent) {
 					throw new Error(
-						"Invalid currVer format. Expected values like 1.1.5 or 1.1.5dev."
+						"Invalid currVer format. Expected values like 1.1.5 or 1.1.5dev.",
 					);
 				}
 
@@ -196,7 +198,9 @@ const resolvers = {
 				}
 
 				const newerVersions = versiones.filter((row) => {
-					const parsedDbVersion = parseVersion(String(row.id_version || "").trim());
+					const parsedDbVersion = parseVersion(
+						String(row.id_version || "").trim(),
+					);
 
 					// Ignore malformed DB rows instead of crashing
 					if (!parsedDbVersion) return false;
@@ -206,7 +210,7 @@ const resolvers = {
 
 				if (newerVersions.length > 0) {
 					const important = newerVersions.some(
-						(version) => Number(version.relevancia) >= 3
+						(version) => Number(version.relevancia) >= 3,
 					);
 
 					return {
@@ -679,8 +683,9 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
-				}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${
+						region === "TIJ" ? "1" : "3"
+					}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -1736,7 +1741,7 @@ const resolvers = {
 				const base =
 					process.env.HOST === "PRODUCTION"
 						? "https://api.tecmamovilconnect.com"
-						: "http://10.3.3.218:8083";
+						: process.env.LOCAL_IP_ADDRESS;
 
 				return {
 					success: true,
@@ -2037,25 +2042,20 @@ const resolvers = {
 		}),
 		BadgeData: requireAuth(async (_, __, { user }) => {
 			try {
-
 				if (!user) throw new Error("Unauthorized");
 
 				// const { empId, region } = user;
 
 				return { success: true, message: "Done", data: { format: "CODE128" } };
-
 			} catch (error) {
 				console.error("Error in badge data resolver:", error);
 				throw new Error("Failed to load badge data");
 			}
-
 		}),
 		downloadLoanFileInternal: requireServiceAuth("loans:read")(
 			async (_, { loan_id }) => {
 				try {
-
-					if (!loan_id)
-						throw new Error("loan_id required");
+					if (!loan_id) throw new Error("loan_id required");
 
 					const result = await executeParameterizedQuery(
 						`
@@ -2066,23 +2066,16 @@ const resolvers = {
         FROM Loans
         WHERE loan_id = @loan_id
         `,
-						[
-							{ name: "loan_id", type: sql.Int, value: loan_id }
-						]
+						[{ name: "loan_id", type: sql.Int, value: loan_id }],
 					);
 
-					if (!result.length)
-						throw new Error("Loan not found");
+					if (!result.length) throw new Error("Loan not found");
 
 					const loan = result[0];
 
-					const filePath = path.join(
-						process.cwd(),
-						loan.pdf_relative_path
-					);
+					const filePath = path.join(process.cwd(), loan.pdf_relative_path);
 
-					if (!fs.existsSync(filePath))
-						throw new Error("Loan file not found");
+					if (!fs.existsSync(filePath)) throw new Error("Loan file not found");
 
 					const fileBuffer = fs.readFileSync(filePath);
 
@@ -2090,281 +2083,272 @@ const resolvers = {
 					   Generate better filename
 					----------------------------- */
 
-					const timestamp = DateTime.fromJSDate(loan.requested_at)
-						.toFormat("yyyyLLddHHmm");
+					const timestamp = DateTime.fromJSDate(loan.requested_at).toFormat(
+						"yyyyLLddHHmm",
+					);
 
 					const filename = `Prestamo_${loan.employee_id}_${timestamp}.pdf`;
 
 					return {
 						success: true,
 						filename,
-						file: fileBuffer.toString("base64")
+						file: fileBuffer.toString("base64"),
 					};
-
 				} catch (error) {
-
 					console.error("Loan file download error:", error);
 					throw new Error("Failed to download loan file");
-
 				}
-			}
+			},
 		),
 		RequestLoanDownloadURL: requireServiceAuth("loans:read")(
 			async (_, { loan_id }) => {
 				console.log("Requesting download URL for loan_id: ", loan_id);
 
 				try {
-					const result = await executeParameterizedQuery(`
+					const result = await executeParameterizedQuery(
+						`
 						SELECT pdf_relative_path
 						FROM Loans
 						WHERE loan_id = @param1
-					`, [loan_id], "Error fetching Loan relative path", "tecmamovilcentral");
+					`,
+						[loan_id],
+						"Error fetching Loan relative path",
+						"tecmamovilcentral",
+					);
 
-					console.log("Result is: ", result)
+					console.log("Result is: ", result);
 
 					if (!result.length)
 						return {
 							success: false,
-							message: "Loan not found"
+							message: "Loan not found",
 						};
 					const token = jwt.sign(
 						{
 							loan_id,
-							scope: "loan_download"
+							scope: "loan_download",
 						},
 						process.env.FILE_DOWNLOAD_SECRET,
 						{
-							expiresIn: "60s"
-						}
+							expiresIn: "60s",
+						},
 					);
 
-					const download_url = `${process.env.TMC_API_BASE}/download/loan?token=${token}`
-					console.log("Download URL is: ", download_url)
+					const download_url = `${process.env.TMC_API_BASE}/download/loan?token=${token}`;
+					console.log("Download URL is: ", download_url);
 					return {
 						success: true,
 						message: "File found and URL retrieved",
-						download_url
+						download_url,
 					};
 				} catch (error) {
 					console.log("Error generating loan download URL: ", error);
 					return {
 						success: false,
-						message: "Error generating download URL"
+						message: "Error generating download URL",
 					};
 				}
-
-			}
+			},
 		),
-		PrivacyNoticeEligibility: requireAuth(
-			async (_, __, { user }) => {
-				if (!user) return {
+		PrivacyNoticeEligibility: requireAuth(async (_, __, { user }) => {
+			if (!user)
+				return {
 					success: false,
 					message: "No autorizado",
 				};
 
-				const { empId, region } = user;
+			const { empId, region } = user;
 
-				const dbs = await selectRegion(region);
+			const dbs = await selectRegion(region);
 
-				let code = {};
+			let code = {};
 
-				switch (region) {
-					case "JRZ":
-					case "MTY":
-					case "AMX":
-						code.supervisor = "3";
-						code.area = "5";
-						code.planta = "7";
-						break;
+			switch (region) {
+				case "JRZ":
+				case "MTY":
+				case "AMX":
+					code.supervisor = "3";
+					code.area = "5";
+					code.planta = "7";
+					break;
 
-					case "SAL":
-					case "TIJ":
-						code.supervisor = "8";
-						code.area = "6";
-						code.planta = "1";
-						break;
+				case "SAL":
+				case "TIJ":
+					code.supervisor = "8";
+					code.area = "6";
+					code.planta = "1";
+					break;
 
-					default:
-						return {
-							success: false,
-							message: `Región no soportada`,
-						};
-				}
+				default:
+					return {
+						success: false,
+						message: `Región no soportada`,
+					};
+			}
 
-				const userDetails = await executeQuery(
-					`
+			const userDetails = await executeQuery(
+				`
 					SELECT CB_NIVEL${code.supervisor} AS project_id,
 						CB_NIVEL${code.area} AS area_id
 						FROM COLABORA
 						WHERE CB_CODIGO = '${empId}'
 					`,
-					"Error fetching user project",
-					dbs.colabora
-				);
+				"Error fetching user project",
+				dbs.colabora,
+			);
 
-				if (!userDetails?.length) {
-					return {
-						success: false,
-						message: "Empleado no encontrado para esta región",
-					};
-				}
-
-				const projectId = String(userDetails[0].project_id || "").trim();
-				const areaId = String(userDetails[0].area_id || "").trim();
-
-				const allowedProjectIds = ["H66"];
-
-				if (empId === "900874") {
-					return {
-						success: true,
-						message: "Empleado elegible para aviso de privacidad",
-					};
-				} else {
-
-					if (!allowedProjectIds.includes(projectId)) {
-						return {
-							success: false,
-							message: "Empleado no autorizado para este proyecto",
-						};
-					}
-
-					const allowedAreaIds = [
-						"66-002",
-						"02-004",
-						"02-003",
-					];
-
-					if (!allowedAreaIds.includes(areaId)) {
-						return {
-							success: false,
-							message: "Empleado no autorizado para esta área",
-						};
-					}
-
-					return {
-						success: true,
-						message: "Empleado elegible para aviso de privacidad",
-					};
-				}
-			}
-		),
-		PrivacyNoticeURL: requireAuth(
-			async (_, __, { user }) => {
-				if (!user) return {
+			if (!userDetails?.length) {
+				return {
 					success: false,
-					message: "No autorizado",
+					message: "Empleado no encontrado para esta región",
 				};
+			}
 
-				const { empId, region } = user;
+			const projectId = String(userDetails[0].project_id || "").trim();
+			const areaId = String(userDetails[0].area_id || "").trim();
 
-				const dbs = await selectRegion(region);
+			const allowedProjectIds = ["H66"];
 
-				let code = {};
-
-				switch (region) {
-					case "JRZ":
-					case "MTY":
-					case "AMX":
-						code.supervisor = "3";
-						code.area = "5";
-						code.planta = "7";
-						break;
-
-					case "SAL":
-					case "TIJ":
-						code.supervisor = "8";
-						code.area = "6";
-						code.planta = "1";
-						break;
-
-					default:
-						return {
-							success: false,
-							message: `Región no soportada`,
-						};
-				}
-
-				const userDetails = await executeQuery(
-					`
-					SELECT CB_NIVEL${code.supervisor} AS project_id,
-						CB_NIVEL${code.area} AS area_id
-						FROM COLABORA
-						WHERE CB_CODIGO = '${empId}'
-					`,
-					"Error fetching user project",
-					dbs.colabora
-				);
-
-				if (!userDetails?.length) {
+			if (empId === "900874") {
+				return {
+					success: true,
+					message: "Empleado elegible para aviso de privacidad",
+				};
+			} else {
+				if (!allowedProjectIds.includes(projectId)) {
 					return {
 						success: false,
-						message: "Empleado no encontrado para esta región",
+						message: "Empleado no autorizado para este proyecto",
 					};
 				}
 
-				const projectId = String(userDetails[0].project_id || "").trim();
-				const areaId = String(userDetails[0].area_id || "").trim();
+				const allowedAreaIds = ["66-002", "02-004", "02-003"];
 
-				const allowedProjectIds = ["H66"];
-
-				if (empId === "900874") {
-					console.log("Allowed")
-				} else {
-					if (!allowedProjectIds.includes(projectId)) {
-						return {
-							success: false,
-							message: "Empleado no autorizado para este proyecto",
-						};
-					}
-
-					const allowedAreaIds = [
-						"66-002",
-						"02-004",
-						"02-003",
-					];
-
-					if (!allowedAreaIds.includes(areaId)) {
-						return {
-							success: false,
-							message: "Empleado no autorizado para esta área",
-						};
-					}
-				}
-
-				const fileName = "politica_de_calidad_dynamco.pdf";
-
-				if (!/^[a-zA-Z0-9._-]+$/.test(fileName)) {
+				if (!allowedAreaIds.includes(areaId)) {
 					return {
 						success: false,
-						message: "Nombre de archivo inválido",
+						message: "Empleado no autorizado para esta área",
 					};
 				}
-
-				const token = jwt.sign(
-					{
-						typ: "privacy_notice_download",
-						file: fileName,
-						empId,
-						region,
-						projectId,
-						areaId
-					},
-					fileKey,
-					{ expiresIn: "2m" }
-				);
-
-				const base =
-					process.env.HOST === "PRODUCTION"
-						? "https://api.tecmamovilconnect.com"
-						: "http://10.3.3.218:8083";
 
 				return {
 					success: true,
-					message: "URL de política de privacidad generada",
-					file_url: `${base}/download/privacy-notice?token=${encodeURIComponent(token)}`,
+					message: "Empleado elegible para aviso de privacidad",
 				};
 			}
-		),
+		}),
+		PrivacyNoticeURL: requireAuth(async (_, __, { user }) => {
+			if (!user)
+				return {
+					success: false,
+					message: "No autorizado",
+				};
+
+			const { empId, region } = user;
+
+			const dbs = await selectRegion(region);
+
+			let code = {};
+
+			switch (region) {
+				case "JRZ":
+				case "MTY":
+				case "AMX":
+					code.supervisor = "3";
+					code.area = "5";
+					code.planta = "7";
+					break;
+
+				case "SAL":
+				case "TIJ":
+					code.supervisor = "8";
+					code.area = "6";
+					code.planta = "1";
+					break;
+
+				default:
+					return {
+						success: false,
+						message: `Región no soportada`,
+					};
+			}
+
+			const userDetails = await executeQuery(
+				`
+					SELECT CB_NIVEL${code.supervisor} AS project_id,
+						CB_NIVEL${code.area} AS area_id
+						FROM COLABORA
+						WHERE CB_CODIGO = '${empId}'
+					`,
+				"Error fetching user project",
+				dbs.colabora,
+			);
+
+			if (!userDetails?.length) {
+				return {
+					success: false,
+					message: "Empleado no encontrado para esta región",
+				};
+			}
+
+			const projectId = String(userDetails[0].project_id || "").trim();
+			const areaId = String(userDetails[0].area_id || "").trim();
+
+			const allowedProjectIds = ["H66"];
+
+			if (empId === "900874") {
+				console.log("Allowed");
+			} else {
+				if (!allowedProjectIds.includes(projectId)) {
+					return {
+						success: false,
+						message: "Empleado no autorizado para este proyecto",
+					};
+				}
+
+				const allowedAreaIds = ["66-002", "02-004", "02-003"];
+
+				if (!allowedAreaIds.includes(areaId)) {
+					return {
+						success: false,
+						message: "Empleado no autorizado para esta área",
+					};
+				}
+			}
+
+			const fileName = "politica_de_calidad_dynamco.pdf";
+
+			if (!/^[a-zA-Z0-9._-]+$/.test(fileName)) {
+				return {
+					success: false,
+					message: "Nombre de archivo inválido",
+				};
+			}
+
+			const token = jwt.sign(
+				{
+					typ: "privacy_notice_download",
+					file: fileName,
+					empId,
+					region,
+					projectId,
+					areaId,
+				},
+				fileKey,
+				{ expiresIn: "2m" },
+			);
+
+			const base =
+				process.env.HOST === "PRODUCTION"
+					? "https://api.tecmamovilconnect.com"
+					: process.env.LOCAL_IP_ADDRESS;
+
+			return {
+				success: true,
+				message: "URL de política de privacidad generada",
+				file_url: `${base}/download/privacy-notice?token=${encodeURIComponent(token)}`,
+			};
+		}),
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
@@ -3088,7 +3072,8 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
+					and Proyecto = '${
+						region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
 					dbs.kioskotek,
@@ -3129,12 +3114,13 @@ const resolvers = {
 						} else {
 							letterType = letter.substring(5);
 						}
-						newFileName = `${letter === "CartaPrestamo"
-							? "CartaSalario"
-							: letter === "CartaPermiso"
-								? "CartaViaje"
-								: letter
-							}_${numEmp} - ${formattedCustom}.pdf`;
+						newFileName = `${
+							letter === "CartaPrestamo"
+								? "CartaSalario"
+								: letter === "CartaPermiso"
+									? "CartaViaje"
+									: letter
+						}_${numEmp} - ${formattedCustom}.pdf`;
 
 						let code = {};
 						switch (region) {
@@ -3487,7 +3473,10 @@ const resolvers = {
 						// 	"1301786"
 						// ]);
 
-						if (data.plant_id.trim() === "8-41" || data.plant_id.trim() === "V-D") {
+						if (
+							data.plant_id.trim() === "8-41" ||
+							data.plant_id.trim() === "V-D"
+						) {
 							return { pdfFile: "Exists" };
 						}
 
@@ -3723,7 +3712,7 @@ const resolvers = {
 						break;
 					}
 					case "RetiroFA": {
-						spoti
+						spoti;
 						letterType = letter;
 
 						const formatDateToSpanish = () => {
@@ -4924,46 +4913,330 @@ const resolvers = {
 				};
 			}
 		},
-		handleCheckIn: async (_, { input }) => {
-			console.log("Received request");
-			const { numEmp, region } = input;
-			const dbs = await selectRegion(region);
+		// handleCheckIn: async (_, { input }) => {
+		// 	console.log("Received request");
+		// 	const { numEmp, region } = input;
+		// 	const dbs = await selectRegion(region);
 
-			// Validate the input
-			if (!numEmp || !region) {
+		// 	// Validate the input
+		// 	if (!numEmp || !region) {
+		// 		return {
+		// 			success: false,
+		// 			message: "Input is invalid. Please provide all required fields.",
+		// 		};
+		// 	}
+
+		// 	try {
+		// 		// Construct the SQL query
+		// 		const query = `FROM COLABORA
+		// 						WHERE CB_CODIGO = '${numEmp}'`;
+
+		// 		// console.log("Query is: ", JSON.stringify(query, null, 1));
+
+		// 		// Execute the query
+		// 		const data = await executeQuery(
+		// 			query,
+		// 			"Error updating info for check in",
+		// 			dbs.colabora,
+		// 		);
+
+		// 		// console.log("Obtained data is: ", data);
+		// 		return {
+		// 			success: true,
+		// 			message: "Employee check-in successful",
+		// 		};
+		// 	} catch (error) {
+		// 		console.error("Error while querying employee info:", error);
+		// 		return {
+		// 			success: false,
+		// 			message: "An error occurred while checking in.",
+		// 		};
+		// 	}
+		// },
+		handleCheckIn: requireAuth(async (_, { input }, { user }) => {
+			console.log("Received check-in request");
+			const CHECK_IN_BOX = {
+				name: "Tecma Check-In Test Box",
+
+				// Box range:
+				// 31.751010, -106.424869
+				// 31.750271, -106.424036
+				minLatitude: 31.750271,
+				maxLatitude: 31.75101,
+				minLongitude: -106.424869,
+				maxLongitude: -106.424036,
+			};
+
+			const MAX_LOCATION_ACCURACY_METERS = 75;
+			const BUSINESS_TZ = "America/Denver";
+
+			function isValidNumber(value) {
+				return typeof value === "number" && Number.isFinite(value);
+			}
+
+			function isInsideBoxRange({ latitude, longitude, box }) {
+				return (
+					latitude >= box.minLatitude &&
+					latitude <= box.maxLatitude &&
+					longitude >= box.minLongitude &&
+					longitude <= box.maxLongitude
+				);
+			}
+
+			function normalizeCheckInInput(input) {
 				return {
-					success: false,
-					message: "Input is invalid. Please provide all required fields.",
+					type: input.type,
+					latitude: Number(input.latitude),
+					longitude: Number(input.longitude),
+					accuracy:
+						input.accuracy === null || input.accuracy === undefined
+							? null
+							: Number(input.accuracy),
+					timestamp: input.timestamp,
+					timezone: input.timezone,
+					deviceId: input.deviceId || null,
+					platform: input.platform || null,
+					appVersion: input.appVersion || null,
+					idempotencyKey: input.idempotencyKey,
+				};
+			}
+
+			function validateCheckInInput(input) {
+				if (!["CHECK_IN", "CHECK_OUT"].includes(input.type)) {
+					return {
+						isValid: false,
+						status: "INVALID_TYPE",
+						message: "Tipo de registro inválido.",
+					};
+				}
+
+				if (!input.idempotencyKey) {
+					return {
+						isValid: false,
+						status: "MISSING_IDEMPOTENCY_KEY",
+						message: "No se recibió el identificador único del intento.",
+					};
+				}
+
+				if (!input.timestamp) {
+					return {
+						isValid: false,
+						status: "MISSING_TIMESTAMP",
+						message: "No se recibió la fecha del dispositivo.",
+					};
+				}
+
+				if (!input.timezone) {
+					return {
+						isValid: false,
+						status: "MISSING_TIMEZONE",
+						message: "No se recibió la zona horaria del dispositivo.",
+					};
+				}
+
+				if (!isValidNumber(input.latitude) || !isValidNumber(input.longitude)) {
+					return {
+						isValid: false,
+						status: "INVALID_COORDINATES",
+						message: "Coordenadas inválidas.",
+					};
+				}
+
+				if (
+					input.latitude < -90 ||
+					input.latitude > 90 ||
+					input.longitude < -180 ||
+					input.longitude > 180
+				) {
+					return {
+						isValid: false,
+						status: "INVALID_COORDINATES",
+						message: "Las coordenadas están fuera del rango válido.",
+					};
+				}
+
+				if (
+					input.accuracy !== null &&
+					(!Number.isFinite(input.accuracy) || input.accuracy < 0)
+				) {
+					return {
+						isValid: false,
+						status: "INVALID_ACCURACY",
+						message: "Precisión de ubicación inválida.",
+					};
+				}
+
+				if (
+					input.accuracy !== null &&
+					input.accuracy > MAX_LOCATION_ACCURACY_METERS
+				) {
+					return {
+						isValid: false,
+						status: "LOW_ACCURACY",
+						message:
+							"La precisión de la ubicación es muy baja. Intenta nuevamente en un área más abierta.",
+					};
+				}
+
+				return {
+					isValid: true,
+					status: "VALID",
+					message: "Validación correcta.",
 				};
 			}
 
 			try {
-				// Construct the SQL query
-				const query = `FROM COLABORA
-								WHERE CB_CODIGO = '${numEmp}'`;
+				if (!user) throw new Error("Unauthorized");
 
-				// console.log("Query is: ", JSON.stringify(query, null, 1));
+				const { empId, region } = user;
+				const now = DateTime.now().setZone(BUSINESS_TZ);
 
-				// Execute the query
-				const data = await executeQuery(
-					query,
-					"Error updating info for check in",
+				if (!empId) {
+					return {
+						success: false,
+						status: "EMPLOYEE_NOT_FOUND",
+						message: "No se pudo identificar al empleado desde el token.",
+						checkIn: null,
+					};
+				}
+
+				if (!region) {
+					return {
+						success: false,
+						status: "REGION_NOT_FOUND",
+						message: "No se pudo identificar la región desde el token.",
+						checkIn: null,
+					};
+				}
+
+				const dbs = await selectRegion(region);
+
+				// Optional, but recommended:
+				// Validate that the employee still exists and is active in the region DB.
+				const employeeResult = await executeParameterizedQuery(
+					`
+			SELECT TOP 1
+				CB_CODIGO AS employee_id,
+				CB_ACTIVO AS active
+			FROM COLABORA
+			WHERE CB_CODIGO = @param1
+			`,
+					[empId],
+					"Error fetching employee for check-in",
 					dbs.colabora,
 				);
 
-				// console.log("Obtained data is: ", data);
+				if (!employeeResult?.length) {
+					return {
+						success: false,
+						status: "EMPLOYEE_NOT_FOUND",
+						message: "Empleado no encontrado para esta región.",
+						checkIn: null,
+					};
+				}
+
+				const employee = employeeResult[0];
+
+				if (String(employee.active || "").trim() !== "S") {
+					return {
+						success: false,
+						status: "EMPLOYEE_NOT_ACTIVE",
+						message: "El empleado no se encuentra activo.",
+						checkIn: null,
+					};
+				}
+
+				const normalizedInput = normalizeCheckInInput(input);
+				const validation = validateCheckInInput(normalizedInput);
+
+				if (!validation.isValid) {
+					return {
+						success: false,
+						status: validation.status,
+						message: validation.message,
+						checkIn: {
+							id: null,
+							type: normalizedInput.type || null,
+							registeredAt: now.toISO(),
+							geofenceName: null,
+							latitude: isValidNumber(normalizedInput.latitude)
+								? normalizedInput.latitude
+								: null,
+							longitude: isValidNumber(normalizedInput.longitude)
+								? normalizedInput.longitude
+								: null,
+							accuracy:
+								normalizedInput.accuracy !== null &&
+								Number.isFinite(normalizedInput.accuracy)
+									? normalizedInput.accuracy
+									: null,
+						},
+					};
+				}
+
+				const isInsideAllowedBox = isInsideBoxRange({
+					latitude: normalizedInput.latitude,
+					longitude: normalizedInput.longitude,
+					box: CHECK_IN_BOX,
+				});
+
+				if (!isInsideAllowedBox) {
+					return {
+						success: false,
+						status: "OUTSIDE_GEOFENCE",
+						message:
+							"Debes estar dentro del área permitida para hacer check-in.",
+						checkIn: {
+							id: null,
+							type: normalizedInput.type,
+							registeredAt: now.toISO(),
+							geofenceName: CHECK_IN_BOX.name,
+							latitude: normalizedInput.latitude,
+							longitude: normalizedInput.longitude,
+							accuracy: normalizedInput.accuracy,
+						},
+					};
+				}
+
+				/*
+			LATER STORAGE / PROCESSING HOOK
+
+			Here is where we will later call whatever mechanism you decide:
+			- insert into a different DB/table
+			- call another API
+			- create a K_Solicitudes-style record
+			- register attendance in Colabora
+			- queue an approval/process event
+
+			For now, this mutation only validates the check-in.
+		*/
+
 				return {
 					success: true,
-					message: "Employee check-in successful",
+					status: "REGISTERED",
+					message: "Check-in validado correctamente.",
+					checkIn: {
+						id: null,
+						type: normalizedInput.type,
+						registeredAt: now.toISO(),
+						geofenceName: CHECK_IN_BOX.name,
+						latitude: normalizedInput.latitude,
+						longitude: normalizedInput.longitude,
+						accuracy: normalizedInput.accuracy,
+					},
 				};
-			} catch (error) {
-				console.error("Error while querying employee info:", error);
+			} catch (err) {
+				console.error("handleCheckIn error:", err);
+
 				return {
 					success: false,
-					message: "An error occurred while checking in.",
+					status: "ERROR",
+					message: "Error al procesar el check-in.",
+					checkIn: null,
 				};
 			}
-		},
+		}),
+
 		assignSurveys: async (_, { input }) => {
 			const { employeeId, surveyId, region } = input;
 
@@ -5055,7 +5328,10 @@ const resolvers = {
 					return { success: false, message: "Semanas inválidas." };
 
 				if (parsedWeeks < 2)
-					return { success: false, message: "El plazo mínimo es de 2 semanas." };
+					return {
+						success: false,
+						message: "El plazo mínimo es de 2 semanas.",
+					};
 
 				const safeAmount = parseFloat(parsedAmount.toFixed(2));
 				const safeWeeks = parsedWeeks;
@@ -5115,7 +5391,7 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching user details",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				if (!userDetails?.length) {
@@ -5146,18 +5422,24 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching balance",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
 				if (!Number.isFinite(balance) || balance <= 0)
-					return { success: false, message: "No fue posible obtener el saldo." };
+					return {
+						success: false,
+						message: "No fue posible obtener el saldo.",
+					};
 
 				const minAmount = parseFloat((balance * 0.1).toFixed(2));
 				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
 
 				if (safeAmount < minAmount || safeAmount > maxAmount)
-					return { success: false, message: "Monto fuera de límites permitidos." };
+					return {
+						success: false,
+						message: "Monto fuera de límites permitidos.",
+					};
 
 				// 4) Cycle config
 				const cycleResult = await executeParameterizedQuery(
@@ -5168,7 +5450,7 @@ const resolvers = {
 					`,
 					[],
 					"Error fetching cycle",
-					"tecmamovilcentral"
+					"tecmamovilcentral",
 				);
 
 				const initialWeek = cycleResult?.[0]?.semana_inicial;
@@ -5180,7 +5462,7 @@ const resolvers = {
 				const getFirstSaturday = (year) => {
 					let first = DateTime.fromObject(
 						{ year, month: 1, day: 1 },
-						{ zone: BUSINESS_TZ }
+						{ zone: BUSINESS_TZ },
 					);
 					while (first.weekday !== 6) first = first.plus({ days: 1 });
 					return first.startOf("day");
@@ -5188,7 +5470,9 @@ const resolvers = {
 
 				const firstSaturday = getFirstSaturday(now.year);
 				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
-				const loanEnd = firstSaturday.plus({ weeks: finalWeek - 1 }).endOf("week");
+				const loanEnd = firstSaturday
+					.plus({ weeks: finalWeek - 1 })
+					.endOf("week");
 
 				if (now < loanStart || now > loanEnd)
 					return { success: false, message: "Fuera del periodo permitido." };
@@ -5219,7 +5503,7 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching existing loan request (old kioskotek)",
-					dbs.kioskotek
+					dbs.kioskotek,
 				);
 
 				const oldExistingLoan = await executeParameterizedQuery(
@@ -5237,7 +5521,7 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching existing loan (old colabora)",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				const oldLoanRequested = oldRequestedLoan?.[0]?.status === "true";
@@ -5246,7 +5530,8 @@ const resolvers = {
 				if (oldLoanRequested) {
 					return {
 						success: false,
-						message: "Tienes una solicitud de préstamo pendiente de aprobación.",
+						message:
+							"Tienes una solicitud de préstamo pendiente de aprobación.",
 					};
 				}
 				if (oldLoanExists) {
@@ -5259,7 +5544,7 @@ const resolvers = {
 				// 6) Financial calcs (kept as you had them — NOT FIXED)
 				const interestRate = 0.159;
 				const interestTotal = parseFloat(
-					((interestRate * safeWeeks * safeAmount) / 100).toFixed(2)
+					((interestRate * safeWeeks * safeAmount) / 100).toFixed(2),
 				);
 				const totalToPay = parseFloat((safeAmount + interestTotal).toFixed(2));
 				const weeklyDiscount = parseFloat((totalToPay / safeWeeks).toFixed(2));
@@ -5289,7 +5574,7 @@ const resolvers = {
 						`,
 						[empId],
 						"Error checking existing loan",
-						tx
+						tx,
 					);
 
 					if (existingLoan.length > 0) {
@@ -5334,7 +5619,15 @@ const resolvers = {
 						[
 							empId,
 							`${u.first_name}${u.last_name_pat ? ` ${u.last_name_pat}` : ""}${u.last_name_mat ? ` ${u.last_name_mat}` : ""}`.trim(),
-							region === "JRZ" ? 1 : region === "SAL" ? 2 : region === "MTY" ? 3 : region === "TIJ" ? 4 : 0,
+							region === "JRZ"
+								? 1
+								: region === "SAL"
+									? 2
+									: region === "MTY"
+										? 3
+										: region === "TIJ"
+											? 4
+											: 0,
 							u.plant_code,
 							u.project_code,
 							u.area_code,
@@ -5350,7 +5643,7 @@ const resolvers = {
 							weeklyDiscount,
 						],
 						"Error inserting loan",
-						tx
+						tx,
 					);
 
 					loanId = insertResult?.[0]?.loan_id;
@@ -5361,7 +5654,9 @@ const resolvers = {
 
 					await tx.commit();
 				} catch (txErr) {
-					try { await tx.rollback(); } catch (_) { }
+					try {
+						await tx.rollback();
+					} catch (_) {}
 					console.error("requestLoan TX error:", txErr);
 					return { success: false, message: "Error al procesar la solicitud." };
 				}
@@ -5392,7 +5687,8 @@ const resolvers = {
 					}
 
 					const formattedDate = formatDateToSpanish(new Date());
-					const full_name = `${u.last_name_pat ? `${u.last_name_pat} ` : ""}${u.last_name_mat ? `${u.last_name_mat}` : ""}${(u.last_name_pat || u.last_name_mat) ? ", " : ""}${u.first_name}`.trim();
+					const full_name =
+						`${u.last_name_pat ? `${u.last_name_pat} ` : ""}${u.last_name_mat ? `${u.last_name_mat}` : ""}${u.last_name_pat || u.last_name_mat ? ", " : ""}${u.first_name}`.trim();
 
 					const pdfData = {
 						...u,
@@ -5407,12 +5703,16 @@ const resolvers = {
 
 					// Logo pick (same as you had it)
 					let logoName;
-					if ((u.project_code || "").trim() === "H09") logoName = "FLEXSTEEL.png";
-					else if ((u.project_code || "").trim() === "H75") logoName = "CLEAR.png";
+					if ((u.project_code || "").trim() === "H09")
+						logoName = "FLEXSTEEL.png";
+					else if ((u.project_code || "").trim() === "H75")
+						logoName = "CLEAR.png";
 					else logoName = "LOGOTECMA.png";
 
 					const imageBase64 = fs
-						.readFileSync(path.join(__dirname, `../../public/assets/images/${logoName}`))
+						.readFileSync(
+							path.join(__dirname, `../../public/assets/images/${logoName}`),
+						)
 						.toString("base64");
 
 					pdfData.imageBase64 = imageBase64;
@@ -5435,9 +5735,8 @@ const resolvers = {
 						`,
 						[pdf_file_name, pdf_relative_path, loanId],
 						"Error updating loan PDF metadata",
-						"tecmamovilcentral"
+						"tecmamovilcentral",
 					);
-
 				} catch (pdfErr) {
 					console.error("PDF generation/save error:", pdfErr);
 
@@ -5451,13 +5750,16 @@ const resolvers = {
 						`,
 						[String(pdfErr?.message || "PDF error"), loanId],
 						"Error updating loan note",
-						"tecmamovilcentral"
+						"tecmamovilcentral",
 					);
 
 					// Still treat the loan request as created; PDF can be regenerated later
 				}
 
-				return { success: true, message: "Solicitud registrada correctamente." };
+				return {
+					success: true,
+					message: "Solicitud registrada correctamente.",
+				};
 			} catch (err) {
 				console.error("requestLoan error:", err);
 				return { success: false, message: "Error al procesar la solicitud." };
