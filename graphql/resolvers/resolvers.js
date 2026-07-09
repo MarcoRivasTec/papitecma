@@ -76,6 +76,23 @@ const selectRegion = async (region) => {
 	}
 };
 
+function getBusinessTimezoneByRegion(region) {
+	const normalizedRegion = String(region || "").trim().toUpperCase();
+
+	switch (normalizedRegion) {
+		case "SAL":
+		case "TIJ":
+			return "America/Tijuana";
+
+		case "AMX":
+		case "CENTRAL":
+		case "MTY":
+		case "JRZ":
+		default:
+			return "America/Denver";
+	}
+}
+
 const resolvers = {
 	Blob: blobScalar,
 	Date: dateScalar,
@@ -683,9 +700,8 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${
-						region === "TIJ" ? "1" : "3"
-					}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
+				}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -2349,6 +2365,146 @@ const resolvers = {
 				file_url: `${base}/download/privacy-notice?token=${encodeURIComponent(token)}`,
 			};
 		}),
+		TodayCheckIns: requireAuth(async (_, __, { user }) => {
+			// await new Promise((resolve) => setTimeout(resolve, 5000));
+
+			function formatCheckTime(value) {
+				if (value === null || value === undefined) return null;
+
+				const raw = String(value).trim();
+
+				if (!raw) return null;
+
+				const padded = raw.padStart(4, "0");
+
+				if (!/^\d{4}$/.test(padded)) return raw;
+
+				const hours = padded.slice(0, 2);
+				const minutes = padded.slice(2, 4);
+
+				return `${hours}:${minutes}`;
+			}
+			try {
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				if (!empId) {
+					return {
+						success: false,
+						message: "No se pudo identificar al empleado desde el token.",
+						data: null,
+					};
+				}
+
+				if (!region) {
+					return {
+						success: false,
+						message: "No se pudo identificar la región desde el token.",
+						data: null,
+					};
+				}
+
+				const timezone = getBusinessTimezoneByRegion(region);
+				const now = DateTime.now().setZone(timezone);
+
+				const startOfDay = now.startOf("day");
+				const endOfDay = startOfDay.plus({ days: 1 });
+
+				console.log("todayCheckIns days: ", {
+					now: now.toISO(),
+					startOfDay: startOfDay.toISO(),
+					endOfDay: endOfDay.toISO(),
+					timezone,
+				});
+
+				// IMPORTANT:
+				// Do not use .toJSDate() here.
+				// SQL Server DATETIME has no timezone, and AU_FECHA is stored as local 00:00:00.
+				const sqlStartOfDay = startOfDay.toFormat("yyyy-LL-dd HH:mm:ss");
+				const sqlEndOfDay = endOfDay.toFormat("yyyy-LL-dd HH:mm:ss");
+
+				const dbs = await selectRegion(region);
+
+				const result = await executeParameterizedQuery(
+					`
+					DECLARE @StartOfDay DATETIME2 = CONVERT(DATETIME2, @param2, 120);
+					DECLARE @EndOfDay DATETIME2 = CONVERT(DATETIME2, @param3, 120);
+
+					SELECT
+						MAX(CASE
+							WHEN CH.CH_TIPO = 1 AND CH.CH_POSICIO = 1
+							THEN CH.CH_H_REAL
+						END) AS entrada_1,
+
+						MAX(CASE
+							WHEN CH.CH_TIPO = 2 AND CH.CH_POSICIO = 1
+							THEN CH.CH_H_REAL
+						END) AS salida_1,
+
+						MAX(CASE
+							WHEN CH.CH_TIPO = 1 AND CH.CH_POSICIO = 2
+							THEN CH.CH_H_REAL
+						END) AS entrada_2,
+
+						MAX(CASE
+							WHEN CH.CH_TIPO = 2 AND CH.CH_POSICIO = 2
+							THEN CH.CH_H_REAL
+						END) AS salida_2
+					FROM CHECADAS AS CH
+					WHERE CH.CB_CODIGO = @param1
+						AND CH.AU_FECHA >= @StartOfDay
+						AND CH.AU_FECHA < @EndOfDay
+					`,
+					[
+						empId,
+						sqlStartOfDay,
+						sqlEndOfDay,
+					],
+					"Error fetching today's check-ins",
+					dbs.colabora
+				);
+
+				// console.log("todayCheckIns params:", {
+				// 	empId,
+				// 	timezone,
+				// 	sqlStartOfDay,
+				// 	sqlEndOfDay,
+				// 	rawResult: result,
+				// });
+
+				const row = result?.[0] || {};
+
+				return {
+					success: true,
+					message: "Checadas obtenidas correctamente.",
+					data: {
+						date: startOfDay.toISODate(),
+						timezone,
+
+						entrada_1: formatCheckTime(row.entrada_1),
+						salida_1: formatCheckTime(row.salida_1),
+						entrada_2: formatCheckTime(row.entrada_2),
+						salida_2: formatCheckTime(row.salida_2),
+
+						entrada_1_raw: row.entrada_1 ? String(row.entrada_1).trim() : null,
+						salida_1_raw: row.salida_1 ? String(row.salida_1).trim() : null,
+						entrada_2_raw: row.entrada_2 ? String(row.entrada_2).trim() : null,
+						salida_2_raw: row.salida_2 ? String(row.salida_2).trim() : null,
+
+						serverNow: now.toISO(),
+					},
+				};
+			} catch (err) {
+				console.error("todayCheckIns error:", err);
+
+				return {
+					success: false,
+					message: "Error al obtener las checadas del día.",
+					data: null,
+				};
+			}
+		}),
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
@@ -3072,8 +3228,7 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${
-						region === "TIJ" || region === "SAL" ? project[0] : project
+					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
 					dbs.kioskotek,
@@ -3114,13 +3269,12 @@ const resolvers = {
 						} else {
 							letterType = letter.substring(5);
 						}
-						newFileName = `${
-							letter === "CartaPrestamo"
-								? "CartaSalario"
-								: letter === "CartaPermiso"
-									? "CartaViaje"
-									: letter
-						}_${numEmp} - ${formattedCustom}.pdf`;
+						newFileName = `${letter === "CartaPrestamo"
+							? "CartaSalario"
+							: letter === "CartaPermiso"
+								? "CartaViaje"
+								: letter
+							}_${numEmp} - ${formattedCustom}.pdf`;
 
 						let code = {};
 						switch (region) {
@@ -4913,46 +5067,6 @@ const resolvers = {
 				};
 			}
 		},
-		// handleCheckIn: async (_, { input }) => {
-		// 	console.log("Received request");
-		// 	const { numEmp, region } = input;
-		// 	const dbs = await selectRegion(region);
-
-		// 	// Validate the input
-		// 	if (!numEmp || !region) {
-		// 		return {
-		// 			success: false,
-		// 			message: "Input is invalid. Please provide all required fields.",
-		// 		};
-		// 	}
-
-		// 	try {
-		// 		// Construct the SQL query
-		// 		const query = `FROM COLABORA
-		// 						WHERE CB_CODIGO = '${numEmp}'`;
-
-		// 		// console.log("Query is: ", JSON.stringify(query, null, 1));
-
-		// 		// Execute the query
-		// 		const data = await executeQuery(
-		// 			query,
-		// 			"Error updating info for check in",
-		// 			dbs.colabora,
-		// 		);
-
-		// 		// console.log("Obtained data is: ", data);
-		// 		return {
-		// 			success: true,
-		// 			message: "Employee check-in successful",
-		// 		};
-		// 	} catch (error) {
-		// 		console.error("Error while querying employee info:", error);
-		// 		return {
-		// 			success: false,
-		// 			message: "An error occurred while checking in.",
-		// 		};
-		// 	}
-		// },
 		handleCheckIn: requireAuth(async (_, { input }, { user }) => {
 			console.log("Received check-in request");
 			const CHECK_IN_BOX = {
@@ -4961,14 +5075,13 @@ const resolvers = {
 				// Box range:
 				// 31.751010, -106.424869
 				// 31.750271, -106.424036
-				minLatitude: 31.750271,
-				maxLatitude: 31.75101,
-				minLongitude: -106.424869,
-				maxLongitude: -106.424036,
+				minLatitude: 31.619716,
+				maxLatitude: 31.622006,
+				minLongitude: -106.449941,
+				maxLongitude: -106.446905,
 			};
 
 			const MAX_LOCATION_ACCURACY_METERS = 75;
-			const BUSINESS_TZ = "America/Denver";
 
 			function isValidNumber(value) {
 				return typeof value === "number" && Number.isFinite(value);
@@ -4992,8 +5105,8 @@ const resolvers = {
 						input.accuracy === null || input.accuracy === undefined
 							? null
 							: Number(input.accuracy),
-					timestamp: input.timestamp,
-					timezone: input.timezone,
+					clientTimestamp: input.timestamp || null,
+					clientTimezone: input.timezone || null,
 					deviceId: input.deviceId || null,
 					platform: input.platform || null,
 					appVersion: input.appVersion || null,
@@ -5015,22 +5128,6 @@ const resolvers = {
 						isValid: false,
 						status: "MISSING_IDEMPOTENCY_KEY",
 						message: "No se recibió el identificador único del intento.",
-					};
-				}
-
-				if (!input.timestamp) {
-					return {
-						isValid: false,
-						status: "MISSING_TIMESTAMP",
-						message: "No se recibió la fecha del dispositivo.",
-					};
-				}
-
-				if (!input.timezone) {
-					return {
-						isValid: false,
-						status: "MISSING_TIMEZONE",
-						message: "No se recibió la zona horaria del dispositivo.",
 					};
 				}
 
@@ -5089,7 +5186,6 @@ const resolvers = {
 				if (!user) throw new Error("Unauthorized");
 
 				const { empId, region } = user;
-				const now = DateTime.now().setZone(BUSINESS_TZ);
 
 				if (!empId) {
 					return {
@@ -5111,8 +5207,9 @@ const resolvers = {
 
 				const dbs = await selectRegion(region);
 
-				// Optional, but recommended:
-				// Validate that the employee still exists and is active in the region DB.
+				const timezone = getBusinessTimezoneByRegion(region);
+				const now = DateTime.now().setZone(timezone);
+
 				const employeeResult = await executeParameterizedQuery(
 					`
 			SELECT TOP 1
@@ -5167,7 +5264,7 @@ const resolvers = {
 								: null,
 							accuracy:
 								normalizedInput.accuracy !== null &&
-								Number.isFinite(normalizedInput.accuracy)
+									Number.isFinite(normalizedInput.accuracy)
 									? normalizedInput.accuracy
 									: null,
 						},
@@ -5198,18 +5295,18 @@ const resolvers = {
 					};
 				}
 
-				/*
-			LATER STORAGE / PROCESSING HOOK
-
-			Here is where we will later call whatever mechanism you decide:
-			- insert into a different DB/table
-			- call another API
-			- create a K_Solicitudes-style record
-			- register attendance in Colabora
-			- queue an approval/process event
-
-			For now, this mutation only validates the check-in.
-		*/
+				const registerCheckIn = await executeParameterizedQuery(
+					`
+				SELECT TOP 1
+					CB_CODIGO AS employee_id,
+					CB_ACTIVO AS active
+				FROM COLABORA
+				WHERE CB_CODIGO = @param1
+				`,
+					[empId],
+					"Error fetching employee for check-in",
+					dbs.colabora,
+				);
 
 				return {
 					success: true,
@@ -5656,7 +5753,7 @@ const resolvers = {
 				} catch (txErr) {
 					try {
 						await tx.rollback();
-					} catch (_) {}
+					} catch (_) { }
 					console.error("requestLoan TX error:", txErr);
 					return { success: false, message: "Error al procesar la solicitud." };
 				}

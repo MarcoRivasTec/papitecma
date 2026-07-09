@@ -34,7 +34,9 @@ const executeParameterizedQuery = async (
 	errorMessage,
 	dbName,
 ) => {
-	console.log("Executing parameterized query");
+	// console.log("Executing parameterized query");
+	// console.log("Query: ", query);
+	// console.log("Params: ", params);
 	try {
 		const pool = await poolPromises[dbName];
 		const request = pool.request();

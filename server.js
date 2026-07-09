@@ -43,6 +43,7 @@ function getUserFromAuthHeader(req) {
 			throw new Error("Invalid mobile token");
 		}
 
+		// console.log("Payload is: ", JSON.stringify(payload, null, 1));
 		return {
 			type: "user",
 			empId: payload.empId,
@@ -136,6 +137,8 @@ console.log("Applying middleware");
 app.use((req, _res, next) => {
 	// console.log("Received request for:", req.path);
 	req.user = getUserFromAuthHeader(req); // may be null if no/invalid token
+	// console.log("User extracted from auth header:", req.user);
+	// console.log("Request:", req);
 	next();
 });
 

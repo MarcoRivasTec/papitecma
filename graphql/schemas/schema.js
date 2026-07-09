@@ -489,8 +489,8 @@ const typeDefs = gql`
 		latitude: Float!
 		longitude: Float!
 		accuracy: Float
-		timestamp: String!
-		timezone: String!
+		clientTimestamp: String
+		clientTimezone: String
 		deviceId: String
 		platform: String
 		appVersion: String
@@ -512,6 +512,29 @@ const typeDefs = gql`
 		status: String
 		message: String!
 		checkIn: CheckInRecord
+	}
+
+	type TodayCheckInsData {
+		date: String
+		timezone: String
+
+		entrada_1: String
+		salida_1: String
+		entrada_2: String
+		salida_2: String
+
+		entrada_1_raw: String
+		salida_1_raw: String
+		entrada_2_raw: String
+		salida_2_raw: String
+
+		serverNow: String
+	}
+
+	type TodayCheckInsResponse {
+		success: Boolean!
+		message: String!
+		data: TodayCheckInsData
 	}
 
 	type Query {
@@ -569,6 +592,8 @@ const typeDefs = gql`
 
 		PrivacyNoticeEligibility: Response!
 		PrivacyNoticeURL: URLFileResponse!
+
+		TodayCheckIns: TodayCheckInsResponse!
 	}
 
 	type Mutation {
