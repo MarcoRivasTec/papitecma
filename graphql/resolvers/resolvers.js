@@ -53,6 +53,7 @@ const selectRegion = async (region) => {
 				kioskotek: "kioskocentral",
 				colabora: "tecmacentral",
 				tecmamovil: "tecmamovilcentral",
+				comparte: "compartecentral",
 			};
 		}
 		case "AMX": {
@@ -61,6 +62,7 @@ const selectRegion = async (region) => {
 				colabora: "amxpro",
 				tecmamovil: "tecmamovilcentral",
 				tecma_csa: "tecma_csa",
+				comparte: "compartecentral",
 			};
 		}
 		case "SAL":
@@ -69,6 +71,7 @@ const selectRegion = async (region) => {
 				kioskotek: "kioskowest",
 				colabora: "tecmawest",
 				tecmamovil: "tecmamovilwest",
+				comparte: "compartewest",
 			};
 		}
 		default:
@@ -77,7 +80,9 @@ const selectRegion = async (region) => {
 };
 
 function getBusinessTimezoneByRegion(region) {
-	const normalizedRegion = String(region || "").trim().toUpperCase();
+	const normalizedRegion = String(region || "")
+		.trim()
+		.toUpperCase();
 
 	switch (normalizedRegion) {
 		case "SAL":
@@ -700,8 +705,9 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
-				}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${
+						region === "TIJ" ? "1" : "3"
+					}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -2456,13 +2462,9 @@ const resolvers = {
 						AND CH.AU_FECHA >= @StartOfDay
 						AND CH.AU_FECHA < @EndOfDay
 					`,
-					[
-						empId,
-						sqlStartOfDay,
-						sqlEndOfDay,
-					],
+					[empId, sqlStartOfDay, sqlEndOfDay],
 					"Error fetching today's check-ins",
-					dbs.colabora
+					dbs.colabora,
 				);
 
 				// console.log("todayCheckIns params:", {
@@ -2683,7 +2685,7 @@ const resolvers = {
 				},
 				process.env.JWT_KEY,
 				{
-					expiresIn: "1h",
+					expiresIn: "2h",
 				},
 			);
 
@@ -3071,9 +3073,7 @@ const resolvers = {
 			// console.log(`Day to adjust: ${day_to_adjust}, period: ${period}`);
 			// return
 			try {
-				if (letter === "PtmoFA") {
-					if (loan_weeks < 2) return "LessThan2Weeks";
-				}
+				if (letter === "PtmoFA") return { pdfFile: "Error" };;
 				const data = {
 					numEmp,
 					name,
@@ -3228,7 +3228,8 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
+					and Proyecto = '${
+						region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
 					dbs.kioskotek,
@@ -3269,12 +3270,13 @@ const resolvers = {
 						} else {
 							letterType = letter.substring(5);
 						}
-						newFileName = `${letter === "CartaPrestamo"
-							? "CartaSalario"
-							: letter === "CartaPermiso"
-								? "CartaViaje"
-								: letter
-							}_${numEmp} - ${formattedCustom}.pdf`;
+						newFileName = `${
+							letter === "CartaPrestamo"
+								? "CartaSalario"
+								: letter === "CartaPermiso"
+									? "CartaViaje"
+									: letter
+						}_${numEmp} - ${formattedCustom}.pdf`;
 
 						let code = {};
 						switch (region) {
@@ -5075,10 +5077,16 @@ const resolvers = {
 				// Box range:
 				// 31.751010, -106.424869
 				// 31.750271, -106.424036
-				minLatitude: 31.619716,
-				maxLatitude: 31.622006,
-				minLongitude: -106.449941,
-				maxLongitude: -106.446905,
+				//Home
+				minLatitude: 31.750271,
+				maxLatitude: 31.75101,
+				minLongitude: -106.424869,
+				maxLongitude: -106.424036,
+				//TECMA
+				// minLatitude: 31.619716,
+				// maxLatitude: 31.622006,
+				// minLongitude: -106.449941,
+				// maxLongitude: -106.446905,
 			};
 
 			const MAX_LOCATION_ACCURACY_METERS = 75;
@@ -5182,6 +5190,19 @@ const resolvers = {
 				};
 			}
 
+			function getLinxIdByRegion(region) {
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+						return "TMC";
+					case "AMX":
+						return "TMA";
+					case "SAL":
+					case "TIJ":
+						return "TMW";
+				}
+			}
+
 			try {
 				if (!user) throw new Error("Unauthorized");
 
@@ -5207,17 +5228,40 @@ const resolvers = {
 
 				const dbs = await selectRegion(region);
 
+				let code = {};
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX": {
+						code.supervisor = "3";
+						code.area = "5";
+						code.proyecto = "0";
+						code.planta = "7";
+						break;
+					}
+					case "SAL":
+					case "TIJ": {
+						code.supervisor = "8";
+						code.proyecto = "5";
+						code.area = "6";
+						code.planta = "1";
+						break;
+					}
+				}
+
 				const timezone = getBusinessTimezoneByRegion(region);
 				const now = DateTime.now().setZone(timezone);
 
 				const employeeResult = await executeParameterizedQuery(
 					`
-			SELECT TOP 1
-				CB_CODIGO AS employee_id,
-				CB_ACTIVO AS active
-			FROM COLABORA
-			WHERE CB_CODIGO = @param1
-			`,
+					SELECT TOP 1
+						CB_CODIGO AS employee_id,
+						CB_ACTIVO AS active,
+						CB_NIVEL${code.proyecto} As project_id,
+						CB_NIVEL${code.planta} As plant_id
+					FROM COLABORA
+					WHERE CB_CODIGO = @param1
+					`,
 					[empId],
 					"Error fetching employee for check-in",
 					dbs.colabora,
@@ -5252,21 +5296,8 @@ const resolvers = {
 						status: validation.status,
 						message: validation.message,
 						checkIn: {
-							id: null,
 							type: normalizedInput.type || null,
 							registeredAt: now.toISO(),
-							geofenceName: null,
-							latitude: isValidNumber(normalizedInput.latitude)
-								? normalizedInput.latitude
-								: null,
-							longitude: isValidNumber(normalizedInput.longitude)
-								? normalizedInput.longitude
-								: null,
-							accuracy:
-								normalizedInput.accuracy !== null &&
-									Number.isFinite(normalizedInput.accuracy)
-									? normalizedInput.accuracy
-									: null,
 						},
 					};
 				}
@@ -5280,46 +5311,96 @@ const resolvers = {
 				if (!isInsideAllowedBox) {
 					return {
 						success: false,
-						status: "OUTSIDE_GEOFENCE",
+						status: "Fuera de rango",
 						message:
 							"Debes estar dentro del área permitida para hacer check-in.",
 						checkIn: {
-							id: null,
 							type: normalizedInput.type,
 							registeredAt: now.toISO(),
-							geofenceName: CHECK_IN_BOX.name,
-							latitude: normalizedInput.latitude,
-							longitude: normalizedInput.longitude,
-							accuracy: normalizedInput.accuracy,
 						},
 					};
 				}
 
-				const registerCheckIn = await executeParameterizedQuery(
+				let confidentiality;
+
+				if (region === "JRZ" || region === "MTY" || region === "AMX") {
+					confidentiality = employee.project_id.trim();
+				} else if (region === "SAL" || region === "TIJ") {
+					confidentiality = employee.plant_id.trim();
+				}
+
+				console.log("Confidentiality is: ", confidentiality);
+
+				const companyResult = await executeParameterizedQuery(
 					`
-				SELECT TOP 1
-					CB_CODIGO AS employee_id,
-					CB_ACTIVO AS active
-				FROM COLABORA
-				WHERE CB_CODIGO = @param1
-				`,
-					[empId],
-					"Error fetching employee for check-in",
-					dbs.colabora,
+					SELECT TOP 1
+						CM_DIGITO AS code
+					FROM COMPANY
+					WHERE CM_NIVEL0 LIKE @param1
+					`,
+					[`%${confidentiality}%`],
+					"Error fetching company information",
+					dbs.comparte,
 				);
+
+				console.log("Company result query: ", companyResult);
+				const company = companyResult[0];
+				if(company.code === null || company.code === undefined || company.code.trim() === "") {
+					return {
+						success: false,
+						status: "Información interna incompleta",
+						message: "No se pudo determinar la información interna del empleado, contactar a soporte.",
+						checkIn: {
+							type: normalizedInput.type,
+							registeredAt: now.toISO(),
+						},
+					};
+				}
+
+					const linxId = getLinxIdByRegion(region);
+
+					const registerCheckInMock = await executeParameterizedQuery(
+						`
+						DECLARE @now DATETIME = GETDATE();
+						DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
+
+						SELECT @param1 as PO_LINX, 
+								@param2 as PO_EMPRESA, 
+								@param3 as PO_NUMERO, 
+								@now as PO_FECHA, 
+								@nowclock as PO_HORA, 
+								@param4 as PO_LETRA
+						`,
+						[linxId, company.code, empId.toString().trim(), company.code],
+						"Error registering employee check-in",
+						dbs.comparte,
+					);
+
+					console.log("Check-in registration result: ", registerCheckInMock);
+
+					// const registerCheckIn = await executeParameterizedQuery(
+					// 	`
+					// 	DECLARE @now DATETIME = GETDATE();
+					// 	DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
+
+					// 	INSERT INTO POLL(PO_LINX, PO_EMPRESA, PO_NUMERO, PO_FECHA, PO_HORA, PO_LETRA) 
+					// 	VALUES(@param1, @param2, @param3, @now, @nowclock, @param4)
+					// 	`,
+					// 	[linxId, company.code, empId.toString().trim(), company.code],
+					// 	"Error registering employee check-in",
+					// 	dbs.colabora,
+					// );
+
+				// get_date					sys_time
+				// 2026-07-09 03:48:10.170	2026-07-09 03:48:10.1708139
 
 				return {
 					success: true,
 					status: "REGISTERED",
 					message: "Check-in validado correctamente.",
 					checkIn: {
-						id: null,
 						type: normalizedInput.type,
 						registeredAt: now.toISO(),
-						geofenceName: CHECK_IN_BOX.name,
-						latitude: normalizedInput.latitude,
-						longitude: normalizedInput.longitude,
-						accuracy: normalizedInput.accuracy,
 					},
 				};
 			} catch (err) {
@@ -5333,7 +5414,6 @@ const resolvers = {
 				};
 			}
 		}),
-
 		assignSurveys: async (_, { input }) => {
 			const { employeeId, surveyId, region } = input;
 
@@ -5753,7 +5833,7 @@ const resolvers = {
 				} catch (txErr) {
 					try {
 						await tx.rollback();
-					} catch (_) { }
+					} catch (_) {}
 					console.error("requestLoan TX error:", txErr);
 					return { success: false, message: "Error al procesar la solicitud." };
 				}

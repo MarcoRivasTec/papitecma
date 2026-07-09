@@ -498,13 +498,8 @@ const typeDefs = gql`
 	}
 
 	type CheckInRecord {
-		id: ID
 		type: String
 		registeredAt: String
-		geofenceName: String
-		latitude: Float
-		longitude: Float
-		accuracy: Float
 	}
 
 	type CheckInResponse {
