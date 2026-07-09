@@ -5042,8 +5042,8 @@ const resolvers = {
 				// );
 				console.log("After storing metadata");
 
-				// const publicUrl = `https://api.tecmamovilconnect.com/vacation-certificates/${file_name}`;
-				const publicUrl = `http://10.3.1.180:8083/vacation-certificates/${file_name}`;
+				const publicUrl = `https://api.tecmamovilconnect.com/vacation-certificates/${file_name}`;
+				// const publicUrl = `http://10.3.1.180:8083/vacation-certificates/${file_name}`;
 				console.log("Public URL is: ", publicUrl);
 
 				await executeQuery(
