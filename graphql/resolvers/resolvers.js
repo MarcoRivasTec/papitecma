@@ -5302,24 +5302,24 @@ const resolvers = {
 					};
 				}
 
-				const isInsideAllowedBox = isInsideBoxRange({
-					latitude: normalizedInput.latitude,
-					longitude: normalizedInput.longitude,
-					box: CHECK_IN_BOX,
-				});
+				// const isInsideAllowedBox = isInsideBoxRange({
+				// 	latitude: normalizedInput.latitude,
+				// 	longitude: normalizedInput.longitude,
+				// 	box: CHECK_IN_BOX,
+				// });
 
-				if (!isInsideAllowedBox) {
-					return {
-						success: false,
-						status: "Fuera de rango",
-						message:
-							"Debes estar dentro del área permitida para hacer check-in.",
-						checkIn: {
-							type: normalizedInput.type,
-							registeredAt: now.toISO(),
-						},
-					};
-				}
+				// if (!isInsideAllowedBox) {
+				// 	return {
+				// 		success: false,
+				// 		status: "Fuera de rango",
+				// 		message:
+				// 			"Debes estar dentro del área permitida para hacer check-in.",
+				// 		checkIn: {
+				// 			type: normalizedInput.type,
+				// 			registeredAt: now.toISO(),
+				// 		},
+				// 	};
+				// }
 
 				let confidentiality;
 
@@ -5359,37 +5359,39 @@ const resolvers = {
 
 					const linxId = getLinxIdByRegion(region);
 
-					const registerCheckInMock = await executeParameterizedQuery(
-						`
-						DECLARE @now DATETIME = GETDATE();
-						DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
-
-						SELECT @param1 as PO_LINX, 
-								@param2 as PO_EMPRESA, 
-								@param3 as PO_NUMERO, 
-								@now as PO_FECHA, 
-								@nowclock as PO_HORA, 
-								@param4 as PO_LETRA
-						`,
-						[linxId, company.code, empId.toString().trim(), company.code],
-						"Error registering employee check-in",
-						dbs.comparte,
-					);
-
-					console.log("Check-in registration result: ", registerCheckInMock);
-
-					// const registerCheckIn = await executeParameterizedQuery(
+					// const registerCheckInMock = await executeParameterizedQuery(
 					// 	`
 					// 	DECLARE @now DATETIME = GETDATE();
 					// 	DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
 
-					// 	INSERT INTO POLL(PO_LINX, PO_EMPRESA, PO_NUMERO, PO_FECHA, PO_HORA, PO_LETRA) 
-					// 	VALUES(@param1, @param2, @param3, @now, @nowclock, @param4)
+					// 	SELECT @param1 as PO_LINX, 
+					// 			@param2 as PO_EMPRESA, 
+					// 			@param3 as PO_NUMERO, 
+					// 			@now as PO_FECHA, 
+					// 			@nowclock as PO_HORA, 
+					// 			@param4 as PO_LETRA
 					// 	`,
 					// 	[linxId, company.code, empId.toString().trim(), company.code],
 					// 	"Error registering employee check-in",
-					// 	dbs.colabora,
+					// 	dbs.comparte,
 					// );
+
+					// console.log("Check-in registration result: ", registerCheckInMock);
+
+					const registerCheckIn = await executeParameterizedQuery(
+						`
+						DECLARE @now DATETIME = GETDATE();
+						DECLARE @startofday DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+						DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
+
+						INSERT INTO POLL(PO_LINX, PO_EMPRESA, PO_NUMERO, PO_FECHA, PO_HORA, PO_LETRA) 
+						VALUES(@param1, @param2, @param3, @startofday, @nowclock, @param4)
+						`,
+						// [linxId, company.code, empId.toString().trim(), company.code],
+						[linxId, 'W', empId.toString().trim(), 'A'],
+						"Error registering employee check-in",
+						dbs.comparte,
+					);
 
 				// get_date					sys_time
 				// 2026-07-09 03:48:10.170	2026-07-09 03:48:10.1708139
