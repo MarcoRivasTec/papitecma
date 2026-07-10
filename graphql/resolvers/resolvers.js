@@ -3073,7 +3073,7 @@ const resolvers = {
 			// console.log(`Day to adjust: ${day_to_adjust}, period: ${period}`);
 			// return
 			try {
-				if (letter === "PtmoFA") return { pdfFile: "Error" };;
+				if (letter === "PtmoFA") return { pdfFile: "Error" };
 				const data = {
 					numEmp,
 					name,
@@ -4522,92 +4522,327 @@ const resolvers = {
 				};
 			}
 		},
-		requestAbsence: async (_, { input }) => {
-			try {
-				const {
-					numEmp,
-					region,
-					type,
-					start_date,
-					end_date,
-					days,
-					motive,
-					comment,
-				} = input;
-				const dbs = await selectRegion(region);
-				console.log("Input is: ", JSON.stringify(input, null, 1));
+		// requestAbsence: async (_, { input }) => {
+		// 	try {
+		// 		const {
+		// 			numEmp,
+		// 			region,
+		// 			type,
+		// 			start_date,
+		// 			end_date,
+		// 			days,
+		// 			motive,
+		// 			comment,
+		// 		} = input;
+		// 		const dbs = await selectRegion(region);
+		// 		console.log("Input is: ", JSON.stringify(input, null, 1));
 
-				// Validate the input
-				if (!numEmp || !region || !type || !start_date || !days) {
+		// 		// Validate the input
+		// 		if (!numEmp || !region || !type || !start_date || !days) {
+		// 			return {
+		// 				success: false,
+		// 				message: "Input is invalid. Please provide all required fields.",
+		// 			};
+		// 		}
+
+		// 		const startDateSQL = `'${new Date(start_date).toISOString().split("T")[0]}'`;
+		// 		const endDateSQL = end_date
+		// 			? `'${new Date(end_date).toISOString().split("T")[0]}'`
+		// 			: "NULL";
+
+		// 		// const approverData = await executeQuery(
+		// 		// 	`SELECT CB_NIVEL3 as approver FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
+		// 		// 	"Error fetching approver",
+		// 		// 	dbs.colabora
+		// 		// );
+
+		// 		const approverData = await executeQuery(
+		// 			`SELECT N3.TB_NUMERO As approver
+		// 			FROM COLABORA As C
+		// 			INNER JOIN NIVEL3 As N3 ON C.CB_NIVEL3 = N3.TB_CODIGO
+		// 			WHERE CB_CODIGO = '${numEmp}'`,
+		// 			"Error fetching approver",
+		// 			dbs.colabora,
+		// 		);
+
+		// 		// console.warn("Approver data: ", approverData[0])
+
+		// 		// console.warn("Employee authorizer: ", authorizerData[0].authorizer)
+		// 		// console.log("Start date: ", startDateSQL, "End date: ", endDateSQL)
+
+		// 		const query = `INSERT INTO solicitudes_ausencia (
+		// 						id_empleado,
+		// 						tipo_solicitud,
+		// 						fecha_inicio,
+		// 						fecha_fin,
+		// 						fecha_solicitud,
+		// 						autoriza,
+		// 						estado,
+		// 						id_motivo,
+		// 						comentario_empleado,
+		// 						dias_totales
+		// 					)
+		// 					VALUES (
+		// 						'${numEmp}',
+		// 						'${type}',
+		// 						${startDateSQL},
+		// 						${endDateSQL},
+		// 						GETDATE(),
+		// 						'${approverData[0].approver.toString().trim()}',
+		// 						1,
+		// 						${motive ? `'${motive}'` : null},
+		// 						${comment ? `'${comment}'` : null},
+		// 						${days});`;
+		// 		// console.warn("Query is: ", query)
+
+		// 		await executeQuery(query, "Error registering request", dbs.tecmamovil);
+		// 		return {
+		// 			success: true,
+		// 			message: "Se registró la solicitud correctamente.",
+		// 		};
+		// 	} catch (error) {
+		// 		console.error("Request absence caught error: ", error);
+		// 		return {
+		// 			success: false,
+		// 			message: "Ocurrió un error al registrar la solicitud.",
+		// 		};
+		// 	}
+		// },
+		requestAbsence: requireAuth(async (_, { input }, { user }) => {
+			const ABSENCE_STATUS = {
+				PENDING: 1,
+				PRE_APPROVED: 2,
+				APPROVED: 3,
+				REJECTED: 4,
+				CANCELLED: 5,
+			};
+
+			const ABSENCE_ACTION = {
+				APPROVE: "approve",
+				REJECT: "reject",
+				CANCEL: "cancel",
+			};
+
+			const toSqlDate = (value) => {
+				if (!value) return null;
+
+				const date = new Date(value);
+
+				if (Number.isNaN(date.getTime())) {
+					throw new Error(`Invalid date value: ${value}`);
+				}
+
+				return date.toISOString().split("T")[0];
+			};
+
+			const normalizeOptionalString = (value) => {
+				if (value === undefined || value === null) return null;
+
+				const trimmed = value.toString().trim();
+
+				return trimmed === "" ? null : trimmed;
+			};
+
+			const normalizeId = (value) => {
+				if (value === undefined || value === null) return null;
+
+				const trimmed = value.toString().trim();
+
+				return trimmed === "" ? null : trimmed;
+			};
+
+			const getRegionLevelConfig = (region) => {
+				switch (region?.toUpperCase()) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						return {
+							supervisor: "3",
+							area: "5",
+							project: "0",
+							plant: "7",
+						};
+
+					case "SAL":
+					case "TIJ":
+						return {
+							supervisor: "8",
+							project: "5",
+							area: "6",
+							plant: "1",
+						};
+
+					default:
+						throw new Error(`Unsupported region: ${region}`);
+				}
+			};
+
+			try {
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				if (!empId) {
+					return {
+						success: false,
+						message: "No se pudo identificar al empleado desde el token.",
+					};
+				}
+
+				if (!region) {
+					return {
+						success: false,
+						message: "No se pudo identificar la región desde el token.",
+					};
+				}
+
+				const { type, start_date, end_date, days, motive, comment } = input;
+
+				console.log("RequestAbsence input:", JSON.stringify(input, null, 1));
+
+				if (type == null || !start_date || days == null) {
 					return {
 						success: false,
 						message: "Input is invalid. Please provide all required fields.",
 					};
 				}
 
-				const startDateSQL = `'${new Date(start_date).toISOString().split("T")[0]}'`;
-				const endDateSQL = end_date
-					? `'${new Date(end_date).toISOString().split("T")[0]}'`
-					: "NULL";
+				if (days <= 0) {
+					return {
+						success: false,
+						message: "Los días solicitados deben ser mayores a cero.",
+					};
+				}
 
-				// const approverData = await executeQuery(
-				// 	`SELECT CB_NIVEL3 as approver FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
-				// 	"Error fetching approver",
-				// 	dbs.colabora
-				// );
+				const dbs = await selectRegion(region);
+				const code = getRegionLevelConfig(region);
 
-				const approverData = await executeQuery(
-					`SELECT N3.TB_NUMERO As approver
-					FROM COLABORA As C 
-					INNER JOIN NIVEL3 As N3 ON C.CB_NIVEL3 = N3.TB_CODIGO
-					WHERE CB_CODIGO = '${numEmp}'`,
-					"Error fetching approver",
+				const startDateSQL = toSqlDate(start_date);
+				const endDateSQL = toSqlDate(end_date);
+
+				const employeeData = await executeParameterizedQuery(
+					`
+					SELECT TOP 1
+						C.CB_CODIGO AS EmployeeId,
+
+						LTRIM(RTRIM(CONCAT(
+							ISNULL(C.CB_APE_PAT, ''),
+							' ',
+							ISNULL(C.CB_APE_MAT, ''),
+							', ',
+							ISNULL(C.CB_NOMBRES, '')
+						))) AS EmployeeName,
+
+						C.CB_NIVEL${code.plant} AS PlantId,
+						C.CB_NIVEL${code.project} AS ProjectId,
+						C.CB_NIVEL${code.area} AS AreaId,
+
+						C.CB_NIVEL${code.supervisor} AS SupervisorId,
+						N${code.supervisor}.TB_NUMERO AS SuperiorAppId,
+
+						C.CB_TURNO AS TurnId,
+						C.CB_PUESTO AS JobTitleId,
+						C.CB_CLASIFI AS ClassificationId
+					FROM COLABORA AS C
+					LEFT JOIN NIVEL${code.supervisor} AS N${code.supervisor}
+						ON C.CB_NIVEL${code.supervisor} = N${code.supervisor}.TB_CODIGO
+					WHERE C.CB_CODIGO = @param1
+					`,
+					[empId],
+					"Error fetching employee information",
 					dbs.colabora,
 				);
 
-				// console.warn("Approver data: ", approverData[0])
+				if (!employeeData || employeeData.length === 0) {
+					return {
+						success: false,
+						message: "No se encontró información del empleado.",
+					};
+				}
 
-				// console.warn("Employee authorizer: ", authorizerData[0].authorizer)
-				// console.log("Start date: ", startDateSQL, "End date: ", endDateSQL)
+				const employee = employeeData[0];
 
-				const query = `INSERT INTO solicitudes_ausencia (
-								id_empleado,
-								tipo_solicitud,
-								fecha_inicio,
-								fecha_fin,
-								fecha_solicitud,
-								autoriza,
-								estado,
-								id_motivo,
-								comentario_empleado,
-								dias_totales
-							)
-							VALUES (
-								'${numEmp}', 
-								'${type}',
-								${startDateSQL},
-								${endDateSQL},
-								GETDATE(),
-								'${approverData[0].approver.toString().trim()}',
-								1,
-								${motive ? `'${motive}'` : null},
-								${comment ? `'${comment}'` : null},
-								${days});`;
-				// console.warn("Query is: ", query)
+				if (!employee.SuperiorAppId) {
+					console.warn(
+						"Employee does not have a TecmaMovil superior app id assigned:",
+						empId,
+					);
+				}
 
-				await executeQuery(query, "Error registering request", dbs.tecmamovil);
+				await executeParameterizedQuery(
+					`
+					INSERT INTO dbo.AbsenceRequests (
+						EmployeeId,
+						EmployeeName,
+						RequestTypeId,
+						StatusId,
+						ReasonId,
+						StartDate,
+						EndDate,
+						TotalDays,
+						EmployeeComment,
+						PlantId,
+						ProjectId,
+						AreaId,
+						SupervisorId,
+						TurnId,
+						JobTitleId,
+						ClassificationId
+					)
+					VALUES (
+						@param1,
+						@param2,
+						@param3,
+						@param4,
+						@param5,
+						@param6,
+						@param7,
+						@param8,
+						@param9,
+						@param10,
+						@param11,
+						@param12,
+						@param13,
+						@param14,
+						@param15,
+						@param16
+					);
+					`,
+					[
+						normalizeId(employee.EmployeeId),
+						employee.EmployeeName?.toString().trim() || "",
+						type,
+						ABSENCE_STATUS.PENDING,
+						motive ?? null,
+						startDateSQL,
+						endDateSQL,
+						days,
+						normalizeOptionalString(comment),
+						normalizeId(employee.PlantId),
+						normalizeId(employee.ProjectId),
+						normalizeId(employee.AreaId),
+						normalizeId(employee.SupervisorId),
+						normalizeId(employee.TurnId),
+						normalizeId(employee.JobTitleId),
+						normalizeId(employee.ClassificationId),
+					],
+					"Error registering absence request",
+					dbs.tecmamovil,
+				);
+
 				return {
 					success: true,
 					message: "Se registró la solicitud correctamente.",
 				};
 			} catch (error) {
-				console.error("Request absence caught error: ", error);
+				console.error("Request absence caught error:", error);
+
 				return {
 					success: false,
 					message: "Ocurrió un error al registrar la solicitud.",
 				};
 			}
-		},
+		}),
 		handleAbsenceRequest: async (_, { input }) => {
 			try {
 				const { numEmp, region, request_id, action, comment, motive } = input;
@@ -5345,11 +5580,16 @@ const resolvers = {
 
 				console.log("Company result query: ", companyResult);
 				const company = companyResult[0];
-				if(company.code === null || company.code === undefined || company.code.trim() === "") {
+				if (
+					company.code === null ||
+					company.code === undefined ||
+					company.code.trim() === ""
+				) {
 					return {
 						success: false,
 						status: "Información interna incompleta",
-						message: "No se pudo determinar la información interna del empleado, contactar a soporte.",
+						message:
+							"No se pudo determinar la información interna del empleado, contactar a soporte.",
 						checkIn: {
 							type: normalizedInput.type,
 							registeredAt: now.toISO(),
@@ -5357,29 +5597,29 @@ const resolvers = {
 					};
 				}
 
-					const linxId = getLinxIdByRegion(region);
+				const linxId = getLinxIdByRegion(region);
 
-					// const registerCheckInMock = await executeParameterizedQuery(
-					// 	`
-					// 	DECLARE @now DATETIME = GETDATE();
-					// 	DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
+				// const registerCheckInMock = await executeParameterizedQuery(
+				// 	`
+				// 	DECLARE @now DATETIME = GETDATE();
+				// 	DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
 
-					// 	SELECT @param1 as PO_LINX, 
-					// 			@param2 as PO_EMPRESA, 
-					// 			@param3 as PO_NUMERO, 
-					// 			@now as PO_FECHA, 
-					// 			@nowclock as PO_HORA, 
-					// 			@param4 as PO_LETRA
-					// 	`,
-					// 	[linxId, company.code, empId.toString().trim(), company.code],
-					// 	"Error registering employee check-in",
-					// 	dbs.comparte,
-					// );
+				// 	SELECT @param1 as PO_LINX,
+				// 			@param2 as PO_EMPRESA,
+				// 			@param3 as PO_NUMERO,
+				// 			@now as PO_FECHA,
+				// 			@nowclock as PO_HORA,
+				// 			@param4 as PO_LETRA
+				// 	`,
+				// 	[linxId, company.code, empId.toString().trim(), company.code],
+				// 	"Error registering employee check-in",
+				// 	dbs.comparte,
+				// );
 
-					// console.log("Check-in registration result: ", registerCheckInMock);
+				// console.log("Check-in registration result: ", registerCheckInMock);
 
-					const registerCheckIn = await executeParameterizedQuery(
-						`
+				const registerCheckIn = await executeParameterizedQuery(
+					`
 						DECLARE @now DATETIME = GETDATE();
 						DECLARE @startofday DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
 						DECLARE @nowclock CHAR(4) = REPLACE(CONVERT(CHAR(5), @now, 108), ':', '');
@@ -5387,11 +5627,11 @@ const resolvers = {
 						INSERT INTO POLL(PO_LINX, PO_EMPRESA, PO_NUMERO, PO_FECHA, PO_HORA, PO_LETRA) 
 						VALUES(@param1, @param2, @param3, @startofday, @nowclock, @param4)
 						`,
-						// [linxId, company.code, empId.toString().trim(), company.code],
-						[linxId, 'W', empId.toString().trim(), 'A'],
-						"Error registering employee check-in",
-						dbs.comparte,
-					);
+					// [linxId, company.code, empId.toString().trim(), company.code],
+					[linxId, "W", empId.toString().trim(), "A"],
+					"Error registering employee check-in",
+					dbs.comparte,
+				);
 
 				// get_date					sys_time
 				// 2026-07-09 03:48:10.170	2026-07-09 03:48:10.1708139

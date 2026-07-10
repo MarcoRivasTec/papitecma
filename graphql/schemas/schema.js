@@ -328,9 +328,7 @@ const typeDefs = gql`
 	}
 
 	input RequestAbsenceInput {
-		numEmp: String! # ID employee
-		region: String! # Employee region
-		type: String! # Request type
+		type: Int! # Request type
 		start_date: Date! # Initial day date
 		end_date: Date # Last day date
 		days: Int! # Number of days
@@ -339,11 +337,8 @@ const typeDefs = gql`
 	}
 
 	input HandleAbsenceRequestInput {
-		numEmp: String! # ID employee
-		region: String! # Employee region
 		request_id: Int! # Request ID
 		action: String! # Request action
-		motive: Int # Motive id
 		comment: String # Superior comment
 	}
 
