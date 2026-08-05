@@ -3431,26 +3431,28 @@ const resolvers = {
 				// 			letterQuery = letter;
 				// 			break;
 				// 	}
-				// 	const existing = await executeQuery(
-				// 		`SELECT
-				// 			CASE
-				// 				WHEN EXISTS (
-				// 					SELECT 1
-				// 					FROM K_Solicitudes
-				// 					WHERE No = '${numEmp}'
-				// 					And Carta = '${letterQuery}'
-				// 					And Pendiente = 1
-				// 				)
-				// 				THEN CAST(1 AS BIT)
-				// 				ELSE CAST(0 AS BIT)
-				// 			END AS existing_requisition;`,
-				// 		"Error retrieving employee information",
-				// 		dbs.kioskotek
-				// 	);
-				// 	// console.log("Existing: ", existing);
-				// 	if (existing[0].existing_requisition) {
-				// 		return { pdfFile: "Existing requisition" };
-				// 	}
+				const existing = await executeQuery(
+					`SELECT
+						CASE
+							WHEN EXISTS (
+								SELECT 1
+								FROM K_Solicitudes
+								WHERE No = '${numEmp}'
+									AND Carta = '${letterQuery}'
+									AND Pendiente = 1
+									AND Fecha >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
+									AND Fecha < DATEFROMPARTS(YEAR(GETDATE()) + 1, 1, 1)
+							)
+							THEN CAST(1 AS BIT)
+							ELSE CAST(0 AS BIT)
+						END AS existing_requisition;`,
+					"Error retrieving employee information",
+					dbs.kioskotek
+				);
+				// console.log("Existing: ", existing);
+				if (existing[0].existing_requisition) {
+					return { pdfFile: "Existing requisition" };
+				}
 				// }
 
 				// console.log(data);
