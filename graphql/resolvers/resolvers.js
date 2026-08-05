@@ -705,9 +705,8 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${
-						region === "TIJ" ? "1" : "3"
-					}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
+				}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -900,6 +899,41 @@ const resolvers = {
 		},
 		Prestamo: async (_, { numEmp, region }) => {
 			const dbs = await selectRegion(region);
+
+			const code = {};
+			switch (region) {
+				case "JRZ":
+				case "MTY":
+				case "AMX":
+					code.supervisor = "3";
+					code.area = "5";
+					code.proyecto = "0";
+					code.planta = "7";
+					break;
+				case "SAL":
+				case "TIJ":
+					code.supervisor = "8";
+					code.proyecto = "5";
+					code.area = "6";
+					code.planta = "1";
+					break;
+				default:
+					return { success: false, message: "Región no soportada." };
+			}
+
+			// 2) Employee details (PARAMETERIZED)
+			const userDetails = await executeParameterizedQuery(
+				`
+					SELECT
+						C.CB_NIVEL${code.proyecto}   	AS project_code
+					FROM COLABORA AS C
+					WHERE C.CB_CODIGO = @param1
+					`,
+				[numEmp],
+				"Error fetching user details",
+				dbs.colabora
+			);
+
 			const prestamo = await executeQuery(
 				`Declare @CurrentYear INT = YEAR(GETDATE());
 				Declare @Exists NVARCHAR(5);
@@ -1017,7 +1051,13 @@ const resolvers = {
 				}
 
 				// Calculate max weeks
-				const max_weeks = final_week - current_week + 1;
+				let max_weeks
+				console.log("User's project code: ", userDetails[0].project_code.trim());
+				if (userDetails[0].project_code.trim() === "H79") {
+					max_weeks = 10;
+				} else {
+					max_weeks = final_week - current_week + 1;
+				}
 
 				return max_weeks;
 			}
@@ -1783,142 +1823,204 @@ const resolvers = {
 
 				const dbs = await selectRegion(region);
 
-				// 1️⃣ Fetch employee details
+				const code = {};
+
+				switch (region) {
+					case "JRZ":
+					case "MTY":
+					case "AMX":
+						code.supervisor = "3";
+						code.area = "5";
+						code.proyecto = "0";
+						code.planta = "7";
+						break;
+
+					case "SAL":
+					case "TIJ":
+						code.supervisor = "8";
+						code.proyecto = "5";
+						code.area = "6";
+						code.planta = "1";
+						break;
+
+					default:
+						return {
+							success: false,
+							message: "Región no soportada.",
+						};
+				}
+
+				// 1) Fetch employee details
 				const userDetails = await executeParameterizedQuery(
 					`
-					SELECT 
-						CB_CODIGO AS employee_id,
-						CB_CLASIFI AS classification
-					FROM COLABORA
-					WHERE CB_CODIGO = @param1
+					SELECT
+						C.CB_CODIGO AS employee_id,
+						C.CB_CLASIFI AS classification,
+						C.CB_NIVEL${code.proyecto} AS project_code
+					FROM COLABORA AS C
+					WHERE C.CB_CODIGO = @param1
 					`,
 					[empId],
 					"Error fetching user details",
 					dbs.colabora,
 				);
 
-				console.log("User details are: ", userDetails[0]);
-
-				if (!userDetails || userDetails.length === 0) {
+				if (!userDetails?.length) {
 					return {
 						success: false,
 						message: "Empleado no encontrado.",
 					};
 				}
 
-				// 2️⃣ Fetch savings balance
+				const employee = userDetails[0];
+
+				const projectCode = String(employee.project_code || "")
+					.trim()
+					.toUpperCase();
+
+				const isH79 = projectCode === "H79";
+
+				const H79_RULES = {
+					weeks: 10,
+
+					/*
+					 * The existing frontend receives a weekly percentage and multiplies it
+					 * by the selected number of weeks.
+					 *
+					 * 0.3% x 10 weeks = 3% total interest.
+					 */
+					weeklyInterestRate: 0.3,
+					totalInterestRate: 3,
+
+					/*
+					 * Principal + 3% interest may not exceed 80% of the available balance.
+					 */
+					maxTotalRatio: 0.8,
+
+					/*
+					 * Last day on which H79 users can request a loan.
+					 */
+					requestDeadline: "2026-09-06",
+				};
+
+				console.log("User details are: ", employee);
+
+				// 2) Fetch savings balance
 				const balanceResult = await executeParameterizedQuery(
 					`
-					SELECT 
-						SUM(AH.AH_SALDO) * 2 AS SaldoFA
-					FROM AHORRO AS AH
-					WHERE AH.CB_CODIGO = @param1
-						AND AH.AH_TIPO = '2'
-						AND AH.AH_STATUS = 0
-						AND AH.AH_FECHA = (
-						SELECT MAX(AH_FECHA)
-						FROM AHORRO
-						WHERE CB_CODIGO = @param1
-							AND AH_STATUS = 0
-							AND AH_TIPO = '2'
-						)
-					`,
+			SELECT
+				SUM(AH.AH_SALDO) * 2 AS SaldoFA
+			FROM AHORRO AS AH
+			WHERE AH.CB_CODIGO = @param1
+				AND AH.AH_TIPO = '2'
+				AND AH.AH_STATUS = 0
+				AND AH.AH_FECHA = (
+					SELECT MAX(AH_FECHA)
+					FROM AHORRO
+					WHERE CB_CODIGO = @param1
+						AND AH_STATUS = 0
+						AND AH_TIPO = '2'
+				)
+			`,
 					[empId],
 					"Error fetching balance",
 					dbs.colabora,
 				);
 
-				console.log("Balance result: ", balanceResult[0]);
+				console.log("Balance result: ", balanceResult?.[0]);
 
-				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
+				const balance = Number.parseFloat(balanceResult?.[0]?.SaldoFA || 0);
+
+				// if (!Number.isFinite(balance) || balance <= 0) {
+				// 	return {
+				// 		success: false,
+				// 		message: "No fue posible obtener el saldo disponible.",
+				// 	};
+				// }
 
 				let isAllowed = false;
 				let reason = null;
 				let maxWeeks = 0;
 
-				// 3️⃣ Check existing loan
+				// 3) Check existing loan in the new system
 				const existingLoan = await executeParameterizedQuery(
 					`
-					SELECT TOP 1 status
-					FROM Loans
-					WHERE employee_id = @param1
-						AND YEAR(requested_at) = YEAR(GETDATE())
-						-- AND status IN ('PENDING','APPROVED','ACTIVE', 'REJECTED', 'COMPLETED')
-					ORDER BY requested_at DESC
-					`,
+			SELECT TOP 1 status
+			FROM Loans
+			WHERE employee_id = @param1
+				AND YEAR(requested_at) = YEAR(GETDATE())
+			ORDER BY requested_at DESC
+			`,
 					[empId],
 					"Error checking existing loan",
 					"tecmamovilcentral",
 				);
 
-				const oldRequestedLoan = await executeQuery(
-					`DECLARE @CurrentYear INT = YEAR(GETDATE());
-					DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear,1,1);
-					DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear+1,1,1);
+				// Check pending request in the old Kioskotek system
+				const oldRequestedLoan = await executeParameterizedQuery(
+					`
+			DECLARE @CurrentYear INT = YEAR(GETDATE());
+			DECLARE @StartDate DATE = DATEFROMPARTS(@CurrentYear, 1, 1);
+			DECLARE @EndDate DATE = DATEFROMPARTS(@CurrentYear + 1, 1, 1);
 
-					DECLARE @Exists NVARCHAR(5);
-
-					SET @Exists = (
-						SELECT CASE 
-							WHEN EXISTS (
-								SELECT 1
-								FROM K_Solicitudes
-								WHERE Fecha >= @StartDate
-								AND Fecha < @EndDate
-								AND Carta = 'PtmoFA'
-								AND No = ${empId}
-							)
-							THEN 'true'
-							ELSE 'false'
-						END
-					);
-
-					SELECT @Exists AS status;`,
-					"Error fetching existing loan k",
+			SELECT
+				CASE
+					WHEN EXISTS (
+						SELECT 1
+						FROM K_Solicitudes
+						WHERE Fecha >= @StartDate
+							AND Fecha < @EndDate
+							AND Carta = 'PtmoFA'
+							AND No = @param1
+					)
+					THEN 'true'
+					ELSE 'false'
+				END AS status;
+			`,
+					[empId],
+					"Error fetching existing loan request from Kioskotek",
 					dbs.kioskotek,
 				);
 
-				const oldExistingLoan = await executeQuery(
-					`Declare @CurrentYear INT = YEAR(GETDATE());
-						Declare @Exists NVARCHAR(5);
-		
-						Set @Exists = (
-							Select Case 
-								When Exists (
-									Select 1
-									From PRESTAMO
-									Where YEAR(PR_FECHA) = @CurrentYear
-									And CB_CODIGO = ${empId}
-									And PR_TIPO = '4'
-								) Then 'true'
-								Else 'false'
-							End
-						);
-		
-						Select 
-							@Exists As status`,
-					"Error fetching prenomina days information",
+				// Check delivered loan in the old Colabora system
+				const oldExistingLoan = await executeParameterizedQuery(
+					`
+			DECLARE @CurrentYear INT = YEAR(GETDATE());
+
+			SELECT
+				CASE
+					WHEN EXISTS (
+						SELECT 1
+						FROM PRESTAMO
+						WHERE YEAR(PR_FECHA) = @CurrentYear
+							AND CB_CODIGO = @param1
+							AND PR_TIPO = '4'
+					)
+					THEN 'true'
+					ELSE 'false'
+				END AS status;
+			`,
+					[empId],
+					"Error fetching existing loan from Colabora",
 					dbs.colabora,
 				);
 
 				let loanStatus = existingLoan?.[0]?.status || null;
 
 				const oldLoanRequested =
-					oldRequestedLoan[0].status === "true" ? true : false;
+					oldRequestedLoan?.[0]?.status === "true";
+
+				const oldLoanExists =
+					oldExistingLoan?.[0]?.status === "true";
 
 				if (oldLoanRequested) {
 					isAllowed = false;
 					loanStatus = "PENDING";
-					// reason = "Tienes una solicitud de préstamo pendiente de aprobación.";
 				}
-
-				const oldLoanExists =
-					oldExistingLoan[0].status === "true" ? true : false;
 
 				if (oldLoanExists) {
 					isAllowed = false;
 					loanStatus = "COMPLETED";
-					// reason = "Has solicitado un préstamo y ha sido entregado.";
 				}
 
 				console.log(
@@ -1931,26 +2033,36 @@ const resolvers = {
 				);
 
 				if (loanStatus) {
-					// console.log("Evaluating loan status: ", loanStatus);
 					switch (loanStatus) {
 						case "PENDING":
 							isAllowed = false;
 							reason =
 								"Tienes una solicitud de préstamo pendiente de aprobación.";
 							break;
+
 						case "APPROVED":
 							isAllowed = false;
 							reason = "Tienes una solicitud de préstamo aprobada.";
 							break;
+
+						case "ACTIVE":
+							isAllowed = false;
+							reason = "Tienes un préstamo activo.";
+							break;
+
 						case "REJECTED":
 							isAllowed = false;
 							reason = "Tienes una solicitud de préstamo rechazada.";
 							break;
+
 						case "COMPLETED":
 							isAllowed = false;
 							reason = "Has solicitado un préstamo y ha sido entregado.";
 							break;
+
 						default:
+							isAllowed = false;
+							reason = "Ya existe una solicitud de préstamo registrada.";
 							break;
 					}
 				} else {
@@ -1958,79 +2070,165 @@ const resolvers = {
 					reason = "No tienes solicitudes de préstamo activas.";
 				}
 
-				// 4️⃣ Fetch loan cycle config
+				// 4) Fetch loan cycle config
 				const cycleResult = await executeParameterizedQuery(
 					`
-					SELECT TOP 1 
-						semana_inicial,
-						semana_final
-					FROM Prestamos
-					ORDER BY fecha DESC
-					`,
+			SELECT TOP 1
+				semana_inicial,
+				semana_final
+			FROM Prestamos
+			ORDER BY fecha DESC
+			`,
 					[],
 					"Error fetching loan cycle",
 					"tecmamovilcentral",
 				);
 
-				console.log("Loan cycle config: ", cycleResult[0]);
+				console.log("Loan cycle config: ", cycleResult?.[0]);
 
-				const initialWeek = cycleResult[0]?.semana_inicial;
-				const finalWeek = cycleResult[0]?.semana_final;
+				const initialWeek = Number(cycleResult?.[0]?.semana_inicial);
+				const finalWeek = Number(cycleResult?.[0]?.semana_final);
+
+				if (
+					!Number.isInteger(initialWeek) ||
+					!Number.isInteger(finalWeek) ||
+					initialWeek <= 0 ||
+					finalWeek < initialWeek
+				) {
+					return {
+						success: false,
+						message: "No hay un periodo de préstamos configurado correctamente.",
+					};
+				}
 
 				function getFirstSaturday(year) {
 					let first = DateTime.fromObject(
-						{ year, month: 1, day: 1 },
-						{ zone: BUSINESS_TZ },
+						{
+							year,
+							month: 1,
+							day: 1,
+						},
+						{
+							zone: BUSINESS_TZ,
+						},
 					);
+
 					while (first.weekday !== 6) {
 						first = first.plus({ days: 1 });
 					}
+
 					return first.startOf("day");
 				}
 
 				const firstSaturday = getFirstSaturday(now.year);
-				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
-				const loanEnd = firstSaturday
-					.plus({ weeks: finalWeek - 1 })
+
+				const loanStart = firstSaturday.plus({
+					weeks: initialWeek - 1,
+				});
+
+				const configuredLoanEnd = firstSaturday
+					.plus({
+						weeks: finalWeek - 1,
+					})
 					.endOf("week");
 
-				if (isAllowed && (now < loanStart || now > loanEnd)) {
+				const h79LoanEnd = DateTime.fromISO(
+					H79_RULES.requestDeadline,
+					{
+						zone: BUSINESS_TZ,
+					},
+				).endOf("day");
+
+				const effectiveLoanEnd = isH79
+					? h79LoanEnd
+					: configuredLoanEnd;
+
+				if (
+					isAllowed &&
+					(now < loanStart || now > effectiveLoanEnd)
+				) {
 					isAllowed = false;
-					reason =
-						"No se encuentra dentro del periodo permitido para préstamos.";
+
+					reason = isH79
+						? "El periodo para solicitar el préstamo H79 finalizó el 6 de septiembre de 2026."
+						: "No se encuentra dentro del periodo permitido para préstamos.";
 				}
 
 				if (isAllowed) {
-					console.log(
-						`Current week of the year: ${now.weekNumber}, Loan start week: ${loanStart.weekNumber}, Loan end week: ${loanEnd.weekNumber}`,
-					);
-					const currentWeek =
-						Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
+					if (isH79) {
+						/*
+						 * H79 always receives a fixed 10-week term. It does not decrease
+						 * according to the number of weeks remaining in the regular cycle.
+						 */
+						maxWeeks = H79_RULES.weeks;
+					} else {
+						console.log(
+							`Current week of the year: ${now.weekNumber}, Loan start week: ${loanStart.weekNumber}, Loan end week: ${configuredLoanEnd.weekNumber}`,
+						);
 
-					maxWeeks = finalWeek - currentWeek + 1;
+						const currentWeek =
+							Math.floor(now.diff(loanStart, "weeks").weeks) +
+							initialWeek;
 
-					if (maxWeeks < 2) {
-						isAllowed = false;
-						reason = "El periodo restante no permite un mínimo de 2 semanas.";
+						maxWeeks = finalWeek - currentWeek + 1;
+
+						if (maxWeeks < 2) {
+							isAllowed = false;
+							maxWeeks = 0;
+							reason =
+								"El periodo restante no permite un mínimo de 2 semanas.";
+						}
 					}
 				}
 
-				const interestRate = 0.159; // Replace later with config table
+				/*
+				 * The normal project rate remains 0.159% per week.
+				 *
+				 * H79 uses 0.3% per week because its term is fixed at 10 weeks:
+				 * 0.3% x 10 = 3% total.
+				 */
+				const interestRate = isH79
+					? H79_RULES.weeklyInterestRate
+					: 0.159;
 
-				const minAmount = parseFloat((balance * 0.1).toFixed(2));
-				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
+				const minAmount = Number(
+					(balance * 0.1).toFixed(2),
+				);
+
+				const floorToCents = (value) =>
+					Math.floor((value + Number.EPSILON) * 100) / 100;
+
+				/*
+				 * For H79:
+				 *
+				 * principal + 3% interest <= 80% of balance
+				 *
+				 * principal <= (balance x 80%) / 1.03
+				 */
+				const maxAmount = isH79
+					? floorToCents(
+						(balance * H79_RULES.maxTotalRatio) /
+						(1 + H79_RULES.totalInterestRate / 100),
+					)
+					: Number((balance * 0.9).toFixed(2));
 
 				console.log("Loan eligibility data: ", {
 					isAllowed,
 					reason,
+					projectCode,
+					isH79,
 					balance,
 					minAmount,
 					maxAmount,
 					maxWeeks,
 					interestRate,
+					totalInterestRate: isH79
+						? H79_RULES.totalInterestRate
+						: null,
 					loanStatus,
 					loanStart: loanStart.toISO(),
-					loanEnd: loanEnd.toISO(),
+					configuredLoanEnd: configuredLoanEnd.toISO(),
+					effectiveLoanEnd: effectiveLoanEnd.toISO(),
 					now: now.toISO(),
 				});
 
@@ -2044,11 +2242,19 @@ const resolvers = {
 						minAmount,
 						maxAmount,
 						maxWeeks: isAllowed ? maxWeeks : 0,
+
+						/*
+						 * This remains a weekly percentage for compatibility with the
+						 * current frontend calculation:
+						 *
+						 * interest = amount x interestRate x weeks / 100
+						 */
 						interestRate,
+
 						loanStatus,
 						cycle: {
 							startDate: loanStart.toISO(),
-							endDate: loanEnd.toISO(),
+							endDate: effectiveLoanEnd.toISO(),
 						},
 						serverNow: now.toISO(),
 					},
@@ -3228,8 +3434,7 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${
-						region === "TIJ" || region === "SAL" ? project[0] : project
+					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
 					dbs.kioskotek,
@@ -3270,13 +3475,12 @@ const resolvers = {
 						} else {
 							letterType = letter.substring(5);
 						}
-						newFileName = `${
-							letter === "CartaPrestamo"
-								? "CartaSalario"
-								: letter === "CartaPermiso"
-									? "CartaViaje"
-									: letter
-						}_${numEmp} - ${formattedCustom}.pdf`;
+						newFileName = `${letter === "CartaPrestamo"
+							? "CartaSalario"
+							: letter === "CartaPermiso"
+								? "CartaViaje"
+								: letter
+							}_${numEmp} - ${formattedCustom}.pdf`;
 
 						let code = {};
 						switch (region) {
@@ -5743,21 +5947,20 @@ const resolvers = {
 				if (!Number.isFinite(parsedAmount) || parsedAmount <= 0)
 					return { success: false, message: "Monto inválido." };
 
-				if (!Number.isFinite(parsedWeeks) || !Number.isInteger(parsedWeeks))
-					return { success: false, message: "Semanas inválidas." };
-
-				if (parsedWeeks < 2)
-					return {
-						success: false,
-						message: "El plazo mínimo es de 2 semanas.",
-					};
-
-				const safeAmount = parseFloat(parsedAmount.toFixed(2));
-				const safeWeeks = parsedWeeks;
+				const safeAmount = Number(parsedAmount.toFixed(2));
 
 				const { empId, region } = user;
 				const BUSINESS_TZ = "America/Denver";
 				const now = DateTime.now().setZone(BUSINESS_TZ);
+
+				// Standard loan rules
+				const STANDARD_WEEKLY_INTEREST_RATE = 0.159;
+
+				// H79 special loan rules
+				const H79_FIXED_WEEKS = 10;
+				const H79_TOTAL_INTEREST_RATE = 3;
+				const H79_MAX_TOTAL_RATIO = 0.8;
+				const H79_REQUEST_DEADLINE = "2026-09-06";
 
 				const dbs = await selectRegion(region);
 
@@ -5810,7 +6013,7 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching user details",
-					dbs.colabora,
+					dbs.colabora
 				);
 
 				if (!userDetails?.length) {
@@ -5821,6 +6024,27 @@ const resolvers = {
 				}
 
 				const u = userDetails[0];
+				const projectCode = String(u.project_code || "")
+					.trim()
+					.toUpperCase();
+				const isH79 = projectCode === "H79";
+
+				// H79 always uses 10 weeks. Other projects keep the requested term.
+				let safeWeeks;
+				if (isH79) {
+					safeWeeks = H79_FIXED_WEEKS;
+				} else {
+					if (!Number.isFinite(parsedWeeks) || !Number.isInteger(parsedWeeks))
+						return { success: false, message: "Semanas inválidas." };
+
+					if (parsedWeeks < 2)
+						return {
+							success: false,
+							message: "El plazo mínimo es de 2 semanas.",
+						};
+
+					safeWeeks = parsedWeeks;
+				}
 
 				// 3) Balance (outside TX)
 				const balanceResult = await executeParameterizedQuery(
@@ -5841,24 +6065,37 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching balance",
-					dbs.colabora,
+					dbs.colabora
 				);
 
 				const balance = parseFloat(balanceResult?.[0]?.SaldoFA || 0);
 				if (!Number.isFinite(balance) || balance <= 0)
+					return { success: false, message: "No fue posible obtener el saldo." };
+
+				const floorToCents = (value) =>
+					Math.floor((value + Number.EPSILON) * 100) / 100;
+
+				const minAmount = Number((balance * 0.1).toFixed(2));
+
+				// For H79, principal + 3% interest may not exceed 80% of the balance.
+				const maxTotalAllowed = isH79
+					? floorToCents(balance * H79_MAX_TOTAL_RATIO)
+					: null;
+
+				const maxAmount = isH79
+					? floorToCents(
+						maxTotalAllowed / (1 + H79_TOTAL_INTEREST_RATE / 100)
+					)
+					: Number((balance * 0.9).toFixed(2));
+
+				if (safeAmount < minAmount || safeAmount > maxAmount) {
 					return {
 						success: false,
-						message: "No fue posible obtener el saldo.",
+						message: `El monto permitido debe estar entre $${minAmount.toFixed(
+							2
+						)} y $${maxAmount.toFixed(2)}.`,
 					};
-
-				const minAmount = parseFloat((balance * 0.1).toFixed(2));
-				const maxAmount = parseFloat((balance * 0.9).toFixed(2));
-
-				if (safeAmount < minAmount || safeAmount > maxAmount)
-					return {
-						success: false,
-						message: "Monto fuera de límites permitidos.",
-					};
+				}
 
 				// 4) Cycle config
 				const cycleResult = await executeParameterizedQuery(
@@ -5869,19 +6106,19 @@ const resolvers = {
 					`,
 					[],
 					"Error fetching cycle",
-					"tecmamovilcentral",
+					"tecmamovilcentral"
 				);
 
-				const initialWeek = cycleResult?.[0]?.semana_inicial;
-				const finalWeek = cycleResult?.[0]?.semana_final;
+				const initialWeek = Number(cycleResult?.[0]?.semana_inicial);
+				const finalWeek = Number(cycleResult?.[0]?.semana_final);
 
-				if (!initialWeek || !finalWeek)
+				if (!initialWeek || (!isH79 && !finalWeek))
 					return { success: false, message: "No hay periodo configurado." };
 
 				const getFirstSaturday = (year) => {
 					let first = DateTime.fromObject(
 						{ year, month: 1, day: 1 },
-						{ zone: BUSINESS_TZ },
+						{ zone: BUSINESS_TZ }
 					);
 					while (first.weekday !== 6) first = first.plus({ days: 1 });
 					return first.startOf("day");
@@ -5889,19 +6126,35 @@ const resolvers = {
 
 				const firstSaturday = getFirstSaturday(now.year);
 				const loanStart = firstSaturday.plus({ weeks: initialWeek - 1 });
-				const loanEnd = firstSaturday
-					.plus({ weeks: finalWeek - 1 })
-					.endOf("week");
 
-				if (now < loanStart || now > loanEnd)
-					return { success: false, message: "Fuera del periodo permitido." };
+				if (isH79) {
+					const h79RequestDeadline = DateTime.fromISO(
+						H79_REQUEST_DEADLINE,
+						{ zone: BUSINESS_TZ }
+					).endOf("day");
 
-				const currentWeek =
-					Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
-				const maxWeeks = finalWeek - currentWeek + 1;
+					if (now < loanStart || now > h79RequestDeadline) {
+						return {
+							success: false,
+							message:
+								"El periodo para solicitar el préstamo H79 finalizó el 6 de septiembre de 2026.",
+						};
+					}
+				} else {
+					const loanEnd = firstSaturday
+						.plus({ weeks: finalWeek - 1 })
+						.endOf("week");
 
-				if (safeWeeks > maxWeeks)
-					return { success: false, message: "Semanas exceden el límite." };
+					if (now < loanStart || now > loanEnd)
+						return { success: false, message: "Fuera del periodo permitido." };
+
+					const currentWeek =
+						Math.floor(now.diff(loanStart, "weeks").weeks) + initialWeek;
+					const maxWeeks = finalWeek - currentWeek + 1;
+
+					if (safeWeeks > maxWeeks)
+						return { success: false, message: "Semanas exceden el límite." };
+				}
 
 				// 5) Old system checks (done OUTSIDE TX)
 				const oldRequestedLoan = await executeParameterizedQuery(
@@ -5922,7 +6175,7 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching existing loan request (old kioskotek)",
-					dbs.kioskotek,
+					dbs.kioskotek
 				);
 
 				const oldExistingLoan = await executeParameterizedQuery(
@@ -5940,7 +6193,7 @@ const resolvers = {
 					`,
 					[empId],
 					"Error fetching existing loan (old colabora)",
-					dbs.colabora,
+					dbs.colabora
 				);
 
 				const oldLoanRequested = oldRequestedLoan?.[0]?.status === "true";
@@ -5949,8 +6202,7 @@ const resolvers = {
 				if (oldLoanRequested) {
 					return {
 						success: false,
-						message:
-							"Tienes una solicitud de préstamo pendiente de aprobación.",
+						message: "Tienes una solicitud de préstamo pendiente de aprobación.",
 					};
 				}
 				if (oldLoanExists) {
@@ -5960,13 +6212,35 @@ const resolvers = {
 					};
 				}
 
-				// 6) Financial calcs (kept as you had them — NOT FIXED)
-				const interestRate = 0.159;
-				const interestTotal = parseFloat(
-					((interestRate * safeWeeks * safeAmount) / 100).toFixed(2),
+				// 6) Financial calculations
+				// H79 uses a fixed total interest of 3%. Other projects retain
+				// the existing weekly rate calculation of 0.159% per week.
+				const interestRate = isH79
+					? H79_TOTAL_INTEREST_RATE
+					: STANDARD_WEEKLY_INTEREST_RATE;
+
+				const interestTotal = Number(
+					(
+						isH79
+							? (safeAmount * interestRate) / 100
+							: (interestRate * safeWeeks * safeAmount) / 100
+					).toFixed(2)
 				);
-				const totalToPay = parseFloat((safeAmount + interestTotal).toFixed(2));
-				const weeklyDiscount = parseFloat((totalToPay / safeWeeks).toFixed(2));
+
+				const totalToPay = Number((safeAmount + interestTotal).toFixed(2));
+
+				// Defensive check to guarantee that the rounded H79 total remains
+				// at or below 80% of the employee's available balance.
+				if (isH79 && totalToPay > maxTotalAllowed) {
+					return {
+						success: false,
+						message: `El total del préstamo con intereses no puede exceder $${maxTotalAllowed.toFixed(
+							2
+						)}.`,
+					};
+				}
+
+				const weeklyDiscount = Number((totalToPay / safeWeeks).toFixed(2));
 
 				/* ===========================
 				   PHASE 2: TX (Loans only)
@@ -5993,7 +6267,7 @@ const resolvers = {
 						`,
 						[empId],
 						"Error checking existing loan",
-						tx,
+						tx
 					);
 
 					if (existingLoan.length > 0) {
@@ -6038,15 +6312,7 @@ const resolvers = {
 						[
 							empId,
 							`${u.first_name}${u.last_name_pat ? ` ${u.last_name_pat}` : ""}${u.last_name_mat ? ` ${u.last_name_mat}` : ""}`.trim(),
-							region === "JRZ"
-								? 1
-								: region === "SAL"
-									? 2
-									: region === "MTY"
-										? 3
-										: region === "TIJ"
-											? 4
-											: 0,
+							region === "JRZ" ? 1 : region === "SAL" ? 2 : region === "MTY" ? 3 : region === "TIJ" ? 4 : 0,
 							u.plant_code,
 							u.project_code,
 							u.area_code,
@@ -6062,7 +6328,7 @@ const resolvers = {
 							weeklyDiscount,
 						],
 						"Error inserting loan",
-						tx,
+						tx
 					);
 
 					loanId = insertResult?.[0]?.loan_id;
@@ -6073,9 +6339,7 @@ const resolvers = {
 
 					await tx.commit();
 				} catch (txErr) {
-					try {
-						await tx.rollback();
-					} catch (_) {}
+					try { await tx.rollback(); } catch (_) { }
 					console.error("requestLoan TX error:", txErr);
 					return { success: false, message: "Error al procesar la solicitud." };
 				}
@@ -6106,8 +6370,7 @@ const resolvers = {
 					}
 
 					const formattedDate = formatDateToSpanish(new Date());
-					const full_name =
-						`${u.last_name_pat ? `${u.last_name_pat} ` : ""}${u.last_name_mat ? `${u.last_name_mat}` : ""}${u.last_name_pat || u.last_name_mat ? ", " : ""}${u.first_name}`.trim();
+					const full_name = `${u.last_name_pat ? `${u.last_name_pat} ` : ""}${u.last_name_mat ? `${u.last_name_mat}` : ""}${(u.last_name_pat || u.last_name_mat) ? ", " : ""}${u.first_name}`.trim();
 
 					const pdfData = {
 						...u,
@@ -6122,16 +6385,12 @@ const resolvers = {
 
 					// Logo pick (same as you had it)
 					let logoName;
-					if ((u.project_code || "").trim() === "H09")
-						logoName = "FLEXSTEEL.png";
-					else if ((u.project_code || "").trim() === "H75")
-						logoName = "CLEAR.png";
+					if ((u.project_code || "").trim() === "H09") logoName = "FLEXSTEEL.png";
+					else if ((u.project_code || "").trim() === "H75") logoName = "CLEAR.png";
 					else logoName = "LOGOTECMA.png";
 
 					const imageBase64 = fs
-						.readFileSync(
-							path.join(__dirname, `../../public/assets/images/${logoName}`),
-						)
+						.readFileSync(path.join(__dirname, `../../public/assets/images/${logoName}`))
 						.toString("base64");
 
 					pdfData.imageBase64 = imageBase64;
@@ -6154,8 +6413,9 @@ const resolvers = {
 						`,
 						[pdf_file_name, pdf_relative_path, loanId],
 						"Error updating loan PDF metadata",
-						"tecmamovilcentral",
+						"tecmamovilcentral"
 					);
+
 				} catch (pdfErr) {
 					console.error("PDF generation/save error:", pdfErr);
 
@@ -6169,16 +6429,13 @@ const resolvers = {
 						`,
 						[String(pdfErr?.message || "PDF error"), loanId],
 						"Error updating loan note",
-						"tecmamovilcentral",
+						"tecmamovilcentral"
 					);
 
 					// Still treat the loan request as created; PDF can be regenerated later
 				}
 
-				return {
-					success: true,
-					message: "Solicitud registrada correctamente.",
-				};
+				return { success: true, message: "Solicitud registrada correctamente." };
 			} catch (err) {
 				console.error("requestLoan error:", err);
 				return { success: false, message: "Error al procesar la solicitud." };
