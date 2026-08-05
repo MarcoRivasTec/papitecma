@@ -602,9 +602,30 @@ const resolvers = {
 			const query = await executeQuery(
 				`Select CB_FEC_ANT as INGRESO,
 						DATEDIFF(yy,CB_FEC_ANT, GETDATE()) as ANTIGUEDAD, 
-						CB_FEC_ANT As DIASANIV,						
+						CB_FEC_ANT As DIASANIV,
 						CB_DER_PAG as GANADOS, 
-						CB_V_GOZO as TOMADOS
+						CB_V_GOZO as TOMADOS,
+						CASE
+							WHEN CB_NIVEL0 IN ('H75', 'H79') THEN
+								CB_DER_PAG - CB_V_PAGO
+								+
+								(
+									DBO.SP_IMSS(
+										CB_TABLASS,
+										CB_FEC_ANT,
+										GETDATE(),
+										1
+									)
+									* DATEDIFF(DAY, CB_DER_FEC, GETDATE())
+									/ DATEDIFF(
+										DAY,
+										DATEFROMPARTS(YEAR(GETDATE()), 1, 1),
+										DATEFROMPARTS(YEAR(GETDATE()) + 1, 1, 1)
+									)
+								)
+							ELSE
+								CB_DER_PAG - CB_V_PAGO
+							END AS SALDO
 				From COLABORA Where CB_CODIGO = '${numEmp}'`,
 				"Error fetching vacaciones information",
 				dbs.colabora,
@@ -640,9 +661,7 @@ const resolvers = {
 					ganados: returnValue(parseFloat(query[0].GANADOS).toFixed(2)),
 					tomados: returnValue(parseFloat(query[0].TOMADOS).toFixed(2)),
 					disponibles: returnValue(
-						(
-							parseFloat(query[0].GANADOS) - parseFloat(query[0].TOMADOS)
-						).toFixed(2),
+						(parseFloat(query[0].SALDO)).toFixed(2),
 					),
 				},
 			};
@@ -1179,7 +1198,8 @@ const resolvers = {
 						icono_ref_2 as icon_ref_2,
 						icono_ref_3 as icon_ref_3,
 						icono_ref_4 as icon_ref_4
-					From Polizas`,
+					From Polizas
+					WHERE id <> 4`,
 					"Error querying policies",
 					dbs.tecmamovil,
 				);
@@ -2745,27 +2765,100 @@ const resolvers = {
 				}
 			}
 
+			const inactiveEmployees = new Set([
+				"26931",
+				"35485",
+				"26837",
+				"31689",
+				"41900",
+				"26831",
+				"27200",
+				"33457",
+				"33544",
+				"33841",
+				"34019",
+				"41922",
+				"14884",
+				"35620",
+				"40361",
+				"40394",
+				"23815",
+				"28916",
+				"42104",
+				"41045",
+				"42099",
+
+				"2580",
+				"32254",
+				"33712",
+				"38942",
+				"39986",
+				"40665",
+				"41142",
+				"41159",
+				"41509",
+				"41733",
+				"41746",
+				"41799",
+				"42337",
+				"42351",
+				"42452",
+				"42436",
+				"42680",
+				"42697",
+				"43379",
+				"43695",
+				"43744",
+				"43881",
+
+				"42737",
+				"42115",
+				"43660",
+				"43669",
+
+				"16108",
+				"43549",
+				"43748",
+				"43868",
+				"43930",
+
+				"27529",
+				"43775",
+
+				"30903",
+				"32739",
+				"34993",
+				"35181",
+				"37186",
+				"37839",
+				"38380",
+
+				"22102",
+				"36260",
+
+				"42359",
+				"42710",
+				"42616",
+				"4302",
+				"42360",
+				"42398",
+				"43882",
+				"43743",
+				"40447",
+				"38724",
+				"9320",
+				"43662",
+				"41682",
+				"42202"
+
+			]);
+
+			const normalizedNumEmp = String(numEmp).trim();
+			const normalizedRegion = String(region || "").trim().toUpperCase();
+
 			if (
-				numEmp === "26931" ||
-				numEmp === "35485" ||
-				numEmp === "26837" ||
-				numEmp === "31689" ||
-				numEmp === "41900" ||
-				numEmp === "26831" ||
-				numEmp === "27200" ||
-				numEmp === "33457" ||
-				numEmp === "33544" ||
-				numEmp === "33841" ||
-				numEmp === "34019" ||
-				numEmp === "41922" ||
-				numEmp === "14884" ||
-				numEmp === "35620" ||
-				numEmp === "40361" ||
-				numEmp === "40394" ||
-				numEmp === "23815" ||
-				numEmp === "28916" ||
-				numEmp === "42104" ||
-				(numEmp === "42099" && (region === "TIJ" || region === "SAL"))
+				// inactiveRegions.has(normalizedRegion) &&
+				inactiveEmployees.has(normalizedNumEmp) && (region === "TIJ" || region === "SAL")
 			) {
 				return {
 					success: false,
@@ -2774,13 +2867,22 @@ const resolvers = {
 				};
 			}
 
-			const isActiveQuery = `SELECT CB_ACTIVO As active, CB_NIVEL${code.proyecto} As project  FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`;
+			const isActiveQuery = `SELECT CB_ACTIVO As active, CB_NIVEL${code.proyecto} As project, CB_NIVEL${code.planta} as plant  FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`;
+
 
 			const isActive = await executeQuery(
 				isActiveQuery,
 				"Error fetching user status",
 				dbs.colabora,
 			);
+
+			// if (isActive[0].plant.trim() === "T-TSC" || isActive[0].plant.trim() === "2-TSC") {
+			// 	return {
+			// 		success: false,
+			// 		message:
+			// 			"Tu usuario se encuentra inactivo, contacta con tu departamento de Recursos Humanos.",
+			// 	};
+			// }
 
 			if (isActive.length === 0 || isActive[0].active === "N") {
 				return {
@@ -3074,7 +3176,7 @@ const resolvers = {
 				return "Not found";
 			}
 
-			const launchDate = new Date(2026, 4, 24);
+			const launchDate = new Date(2027, 12, 30);
 			const lastLoginDate = new Date(employeeData[0].login_date);
 			console.log(
 				`Launch date is: ${launchDate} and last login date was: ${lastLoginDate} `,
@@ -3582,6 +3684,18 @@ const resolvers = {
 									companyData[0].entidad = "Chihuahua";
 									break;
 							}
+						} else if (employeeData[0].id_proyecto === "H79") {
+							Object.assign(companyData[0], {
+								razon_social: "COORDINADORA PLUS DE TIJUANA",
+								rfc_razon: "CPT950117128",
+								registro_patronal: "A8385218103",
+								calle: "AV. ROSA MARIA Y. FUENTES",
+								num_ext: "7451 INT 1",
+								colonia: "COMPLEJO INDUSTRIAL LOS FUENTES",
+								codigo_postal: "32437",
+								ciudad: "CD JUAREZ",
+								entidad: "CHIHUAHUA",
+							});
 						}
 						// console.log("Employee data: ", employeeData);
 						// console.log("Company data: ", companyData);
@@ -4072,7 +4186,6 @@ const resolvers = {
 						break;
 					}
 					case "RetiroFA": {
-						spoti;
 						letterType = letter;
 
 						const formatDateToSpanish = () => {
