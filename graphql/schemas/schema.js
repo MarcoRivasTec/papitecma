@@ -327,21 +327,6 @@ const typeDefs = gql`
 		cancellation_date: DateTime
 	}
 
-	input RequestAbsenceInput {
-		type: Int! # Request type
-		start_date: Date! # Initial day date
-		end_date: Date # Last day date
-		days: Int! # Number of days
-		motive: Int # Permission motive
-		comment: String # Employee comment
-	}
-
-	input HandleAbsenceRequestInput {
-		request_id: Int! # Request ID
-		action: String! # Request action
-		comment: String # Superior comment
-	}
-
 	input GenerateVacationCertificateInput {
 		numEmp: String!
 		region: String!
@@ -527,6 +512,101 @@ const typeDefs = gql`
 		data: TodayCheckInsData
 	}
 
+	type AbsenceRequest {
+		id: Int!
+
+		employeeId: String!
+		employeeName: String!
+
+		regionId: Int!
+		regionCode: String!
+		regionName: String!
+
+		requestTypeId: Int!
+		requestType: String!
+
+		statusId: Int!
+		status: String!
+
+		reasonId: Int
+		reason: String
+
+		startDate: Date!
+		endDate: Date!
+		requestedAt: String!
+
+		totalDays: Int!
+
+		employeeComment: String
+
+		cancelledAt: String
+		cancellationComment: String
+
+		supervisorPayrollId: String!
+		supervisorAppId: String
+
+		preApprovedBySupervisorAppId: String
+		preApprovedAt: String
+
+		approvedByHRId: String
+		approvedAt: String
+
+		rejectedBySupervisorAppId: String
+		rejectedByHRId: String
+		rejectedAt: String
+
+		modifiedByHRId: String
+		modifiedAt: String
+
+		supervisorComment: String
+		hrComment: String
+
+		plantId: String!
+		projectId: String!
+		areaId: String!
+		turnId: String!
+		jobTitleId: String!
+		classificationId: String!
+	}
+
+	input EmployeeAbsenceRequestsInput {
+		statusId: Int
+		dateFrom: Date
+		dateTo: Date
+	}
+
+	input SupervisorAbsenceRequestsInput {
+		statusId: Int
+		dateFrom: Date
+		dateTo: Date
+	}
+
+	input RequestAbsenceInput {
+		type: Int!
+		start_date: Date!
+		end_date: Date
+		days: Int!
+		motive: Int
+		comment: String
+	}
+
+	input CancelAbsenceRequestInput {
+		request_id: Int!
+		comment: String
+	}
+
+	enum SupervisorAbsenceAction {
+		approve
+		reject
+	}
+
+	input HandleSupervisorAbsenceRequestInput {
+		request_id: Int!
+		action: SupervisorAbsenceAction!
+		comment: String
+	}
+
+
 	type Query {
 		Alive: Response!
 		Healthy: Response!
@@ -584,6 +664,9 @@ const typeDefs = gql`
 		PrivacyNoticeURL: URLFileResponse!
 
 		TodayCheckIns: TodayCheckInsResponse!
+
+		getEmployeeAbsenceRequests(input: EmployeeAbsenceRequestsInput): [AbsenceRequest!]!
+		getSupervisorAbsenceRequests(input: SupervisorAbsenceRequestsInput): [AbsenceRequest!]!
 	}
 
 	type Mutation {
@@ -646,8 +729,6 @@ const typeDefs = gql`
 		submitSurvey(input: SubmitSurveyInput!): Response!
 		submitOpinion(input: OpinionInput!): Response!
 		requestQRData(input: QRInput!): ResponseData!
-		requestAbsence(input: RequestAbsenceInput!): Response!
-		handleAbsenceRequest(input: HandleAbsenceRequestInput!): Response!
 		generateVacationCertificate(
 			input: GenerateVacationCertificateInput!
 		): GenerateVacationCertificateResponse!
@@ -656,6 +737,10 @@ const typeDefs = gql`
 		testMutation: String
 
 		handleCheckIn(input: CheckInInput!): CheckInResponse!
+
+		requestAbsence(input: RequestAbsenceInput!): Response!
+		cancelAbsenceRequest(input: CancelAbsenceRequestInput!): Response!
+		handleSupervisorAbsenceRequest(input: HandleSupervisorAbsenceRequestInput!): Response!
 	}
 `;
 
