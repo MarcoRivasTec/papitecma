@@ -723,9 +723,8 @@ const resolvers = {
 			const dbs = await selectRegion(region);
 			const query = await executeQuery(
 				`Select 
-					MAX(CASE WHEN AH_TIPO = '${
-						region === "TIJ" ? "1" : "3"
-					}' THEN AH_SALDO END) AS SaldoCA,
+					MAX(CASE WHEN AH_TIPO = '${region === "TIJ" ? "1" : "3"
+				}' THEN AH_SALDO END) AS SaldoCA,
 					MAX(CASE WHEN AH_TIPO = '2' THEN AH_SALDO * 2 END) AS SaldoFA,
 					MAX(PR.PR_SALDO) As SaldoPrestamo
 				From 
@@ -2215,9 +2214,9 @@ const resolvers = {
 				 */
 				const maxAmount = isH79
 					? floorToCents(
-							(balance * H79_RULES.maxTotalRatio) /
-								(1 + H79_RULES.totalInterestRate / 100),
-						)
+						(balance * H79_RULES.maxTotalRatio) /
+						(1 + H79_RULES.totalInterestRate / 100),
+					)
 					: Number((balance * 0.9).toFixed(2));
 
 				console.log("Loan eligibility data: ", {
@@ -3916,8 +3915,7 @@ const resolvers = {
 					Inner Join CSC_Asesor on CSC_Asesor.Codigo = DIR.Asesor
 				Where
 					Planta = '${plant_id}'
-					and Proyecto = '${
-						region === "TIJ" || region === "SAL" ? project[0] : project
+					and Proyecto = '${region === "TIJ" || region === "SAL" ? project[0] : project
 					}'`,
 					"Error obtaining CSC Data",
 					dbs.kioskotek,
@@ -3958,13 +3956,12 @@ const resolvers = {
 						} else {
 							letterType = letter.substring(5);
 						}
-						newFileName = `${
-							letter === "CartaPrestamo"
-								? "CartaSalario"
-								: letter === "CartaPermiso"
-									? "CartaViaje"
-									: letter
-						}_${numEmp} - ${formattedCustom}.pdf`;
+						newFileName = `${letter === "CartaPrestamo"
+							? "CartaSalario"
+							: letter === "CartaPermiso"
+								? "CartaViaje"
+								: letter
+							}_${numEmp} - ${formattedCustom}.pdf`;
 
 						let code = {};
 						switch (region) {
@@ -6005,23 +6002,95 @@ const resolvers = {
 		},
 		handleCheckIn: requireAuth(async (_, { input }, { user }) => {
 			console.log("Received check-in request");
-			const CHECK_IN_BOX = {
-				name: "Tecma Check-In Test Box",
 
-				// Box range:
-				// 31.751010, -106.424869
-				// 31.750271, -106.424036
-				//Home
-				minLatitude: 31.750271,
-				maxLatitude: 31.75101,
-				minLongitude: -106.424869,
-				maxLongitude: -106.424036,
-				//TECMA
-				// minLatitude: 31.619716,
-				// maxLatitude: 31.622006,
-				// minLongitude: -106.449941,
-				// maxLongitude: -106.446905,
-			};
+			const CHECK_IN_MARGIN_METERS = 2;
+
+			function expandBoxByMeters(box, marginMeters) {
+				const centerLatitude = (box.minLatitude + box.maxLatitude) / 2;
+
+				const latDelta = marginMeters / 111320;
+				const lonDelta =
+					marginMeters / (111320 * Math.cos((centerLatitude * Math.PI) / 180));
+
+				return {
+					...box,
+					minLatitude: box.minLatitude - latDelta,
+					maxLatitude: box.maxLatitude + latDelta,
+					minLongitude: box.minLongitude - lonDelta,
+					maxLongitude: box.maxLongitude + lonDelta,
+				};
+			}
+
+			const CHECK_IN_AREAS = [
+				{
+					name: "Pasillo Aduanas",
+					cornerA: {
+						latitude: 31.6216944444, 	// 31°37'18.1"N
+						longitude: -106.4482222222, // 106°26'53.6"W
+					},
+					cornerB: {
+						latitude: 31.6217222222, 	// 31°37'18.2"N
+						longitude: -106.4482222222, // 106°26'53.6"W
+					},
+				},
+				{
+					name: "Pasillo Recepcion",
+					cornerA: {
+						latitude: 31.6216944444,
+						longitude: -106.4482222222,
+					},
+					cornerB: {
+						latitude: 31.6216944444,
+						longitude: -106.4481666667,
+					},
+				},
+				{
+					name: "Pasillo Cafeteria",
+					cornerA: {
+						latitude: 31.6215,
+						longitude: -106.44816,
+					},
+					cornerB: {
+						latitude: 31.6216,
+						longitude: -106.44808,
+					},
+				},
+				// {
+				// 	name: "Pasillo Cafeteria",
+				// 	cornerA: {
+				// 		latitude: 31.6214722222, // 31°37'17.3"N
+				// 		longitude: -106.4481111111, // 106°26'53.2"W
+				// 	},
+				// 	cornerB: {
+				// 		latitude: 31.6215, // 31°37'17.4"N
+				// 		longitude: -106.4481111111, // 106°26'53.2"W
+				// 	},
+				// },
+			]
+				.map((area) => ({
+					name: area.name,
+					minLatitude: Math.min(area.cornerA.latitude, area.cornerB.latitude),
+					maxLatitude: Math.max(area.cornerA.latitude, area.cornerB.latitude),
+					minLongitude: Math.min(area.cornerA.longitude, area.cornerB.longitude),
+					maxLongitude: Math.max(area.cornerA.longitude, area.cornerB.longitude),
+				}))
+				.map((area) => expandBoxByMeters(area, CHECK_IN_MARGIN_METERS));
+
+			const GEO_BYPASS_EMP_IDS = new Set([
+				"900874",
+				"900683",
+				"900209",
+			]);
+
+			function findMatchingCheckInArea({ latitude, longitude, areas }) {
+				return areas.find((area) =>
+					isInsideBoxRange({
+						latitude,
+						longitude,
+						box: area,
+					}),
+				);
+			}
 
 			const MAX_LOCATION_ACCURACY_METERS = 75;
 
@@ -6224,6 +6293,8 @@ const resolvers = {
 				const normalizedInput = normalizeCheckInInput(input);
 				const validation = validateCheckInInput(normalizedInput);
 
+				const shouldBypassGeofence = GEO_BYPASS_EMP_IDS.has(String(empId).trim());
+
 				if (!validation.isValid) {
 					return {
 						success: false,
@@ -6236,24 +6307,27 @@ const resolvers = {
 					};
 				}
 
-				// const isInsideAllowedBox = isInsideBoxRange({
-				// 	latitude: normalizedInput.latitude,
-				// 	longitude: normalizedInput.longitude,
-				// 	box: CHECK_IN_BOX,
-				// });
+				let matchedCheckInArea = null;
 
-				// if (!isInsideAllowedBox) {
-				// 	return {
-				// 		success: false,
-				// 		status: "Fuera de rango",
-				// 		message:
-				// 			"Debes estar dentro del área permitida para hacer check-in.",
-				// 		checkIn: {
-				// 			type: normalizedInput.type,
-				// 			registeredAt: now.toISO(),
-				// 		},
-				// 	};
-				// }
+				if (!shouldBypassGeofence) {
+					matchedCheckInArea = findMatchingCheckInArea({
+						latitude: normalizedInput.latitude,
+						longitude: normalizedInput.longitude,
+						areas: CHECK_IN_AREAS,
+					});
+
+					if (!matchedCheckInArea) {
+						return {
+							success: false,
+							status: "Fuera de rango",
+							message: "Debes estar dentro del área permitida para hacer check-in.",
+							checkIn: {
+								type: normalizedInput.type,
+								registeredAt: now.toISO(),
+							},
+						};
+					}
+				}
 
 				let confidentiality;
 
@@ -6338,10 +6412,13 @@ const resolvers = {
 				return {
 					success: true,
 					status: "REGISTERED",
-					message: "Check-in validado correctamente.",
+					message: shouldBypassGeofence
+						? "Check-in validado correctamente."
+						: `Check-in validado correctamente en ${matchedCheckInArea.name}.`,
 					checkIn: {
 						type: normalizedInput.type,
 						registeredAt: now.toISO(),
+						geofenceName: shouldBypassGeofence ? "BYPASS" : matchedCheckInArea.name,
 					},
 				};
 			} catch (err) {
@@ -6844,7 +6921,7 @@ const resolvers = {
 				} catch (txErr) {
 					try {
 						await tx.rollback();
-					} catch (_) {}
+					} catch (_) { }
 					console.error("requestLoan TX error:", txErr);
 					return { success: false, message: "Error al procesar la solicitud." };
 				}
