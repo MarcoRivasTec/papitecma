@@ -492,17 +492,7 @@ const typeDefs = gql`
 	type TodayCheckInsData {
 		date: String
 		timezone: String
-
-		entrada_1: String
-		salida_1: String
-		entrada_2: String
-		salida_2: String
-
-		entrada_1_raw: String
-		salida_1_raw: String
-		entrada_2_raw: String
-		salida_2_raw: String
-
+		punches: [TodayPunchRound!]!
 		serverNow: String
 	}
 
@@ -606,6 +596,39 @@ const typeDefs = gql`
 		comment: String
 	}
 
+	input CheckInZoneStatusInput {
+		latitude: Float!
+		longitude: Float!
+		accuracy: Float
+	}
+
+	type CheckInZoneStatusData {
+		canCheckIn: Boolean!
+		isInsideAllowedZone: Boolean!
+		isBypass: Boolean!
+		status: String!
+		message: String!
+		geofenceName: String
+		latitude: Float
+		longitude: Float
+		accuracy: Float
+		maxAccuracy: Float
+		checkedAt: String
+	}
+
+	type CheckInZoneStatusResponse {
+		success: Boolean!
+		message: String!
+		data: CheckInZoneStatusData
+	}
+
+	type TodayPunchRound {
+		horario: Int!
+		entrada: String
+		salida: String
+		entrada_raw: String
+		salida_raw: String
+	}
 
 	type Query {
 		Alive: Response!
@@ -667,6 +690,8 @@ const typeDefs = gql`
 
 		getEmployeeAbsenceRequests(input: EmployeeAbsenceRequestsInput): [AbsenceRequest!]!
 		getSupervisorAbsenceRequests(input: SupervisorAbsenceRequestsInput): [AbsenceRequest!]!
+
+		CheckInZoneStatus(input: CheckInZoneStatusInput!): CheckInZoneStatusResponse!
 	}
 
 	type Mutation {

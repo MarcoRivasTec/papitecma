@@ -350,7 +350,23 @@ const resolvers = {
 			);
 
 			let restrictedSections = [];
-			if (numEmp !== "900874") {
+			if (numEmp !== "900874"
+				&& numEmp !== "900338"
+				&& numEmp !== "900368"
+				&& numEmp !== "900372"
+				&& numEmp !== "900428"
+				&& numEmp !== "900485"
+				&& numEmp !== "900617"
+				&& numEmp !== "900735"
+				&& numEmp !== "900748"
+				&& numEmp !== "900770"
+				&& numEmp !== "900783"
+				&& numEmp !== "900827"
+				&& numEmp !== "900869"
+				&& numEmp !== "900950"
+			) {
+
+
 				restrictedSections = await executeQuery(
 					`
 				SELECT DISTINCT s.section_name
@@ -2649,31 +2665,32 @@ const resolvers = {
 					DECLARE @EndOfDay DATETIME2 = CONVERT(DATETIME2, @param3, 120);
 
 					SELECT
-						MAX(CASE
-							WHEN CH.CH_TIPO = 1 AND CH.CH_POSICIO = 1
-							THEN CH.CH_H_REAL
-						END) AS entrada_1,
+						TRY_CONVERT(INT, CH.CH_POSICIO) AS horario,
 
 						MAX(CASE
-							WHEN CH.CH_TIPO = 2 AND CH.CH_POSICIO = 1
+							WHEN TRY_CONVERT(INT, CH.CH_TIPO) = 1
 							THEN CH.CH_H_REAL
-						END) AS salida_1,
+						END) AS entrada_raw,
 
 						MAX(CASE
-							WHEN CH.CH_TIPO = 1 AND CH.CH_POSICIO = 2
+							WHEN TRY_CONVERT(INT, CH.CH_TIPO) = 2
 							THEN CH.CH_H_REAL
-						END) AS entrada_2,
-
-						MAX(CASE
-							WHEN CH.CH_TIPO = 2 AND CH.CH_POSICIO = 2
-							THEN CH.CH_H_REAL
-						END) AS salida_2
+						END) AS salida_raw
 					FROM CHECADAS AS CH
 					WHERE CH.CB_CODIGO = @param1
 						AND CH.AU_FECHA >= @StartOfDay
 						AND CH.AU_FECHA < @EndOfDay
+						AND TRY_CONVERT(INT, CH.CH_TIPO) IN (1, 2)
+						AND TRY_CONVERT(INT, CH.CH_POSICIO) IS NOT NULL
+						AND ISNULL(CH.CH_IGNORAR, 'N') <> 'S'
+					GROUP BY TRY_CONVERT(INT, CH.CH_POSICIO)
+					ORDER BY TRY_CONVERT(INT, CH.CH_POSICIO);
 					`,
-					[empId, sqlStartOfDay, sqlEndOfDay],
+					[
+						empId,
+						sqlStartOfDay,
+						sqlEndOfDay,
+					],
 					"Error fetching today's check-ins",
 					dbs.colabora,
 				);
@@ -2686,7 +2703,22 @@ const resolvers = {
 				// 	rawResult: result,
 				// });
 
-				const row = result?.[0] || {};
+				const punches = (result || []).map((row) => ({
+					horario: Number(row.horario),
+
+					entrada: formatCheckTime(row.entrada_raw),
+					salida: formatCheckTime(row.salida_raw),
+
+					entrada_raw:
+						row.entrada_raw !== null && row.entrada_raw !== undefined
+							? String(row.entrada_raw).trim()
+							: null,
+
+					salida_raw:
+						row.salida_raw !== null && row.salida_raw !== undefined
+							? String(row.salida_raw).trim()
+							: null,
+				}));
 
 				return {
 					success: true,
@@ -2694,17 +2726,7 @@ const resolvers = {
 					data: {
 						date: startOfDay.toISODate(),
 						timezone,
-
-						entrada_1: formatCheckTime(row.entrada_1),
-						salida_1: formatCheckTime(row.salida_1),
-						entrada_2: formatCheckTime(row.entrada_2),
-						salida_2: formatCheckTime(row.salida_2),
-
-						entrada_1_raw: row.entrada_1 ? String(row.entrada_1).trim() : null,
-						salida_1_raw: row.salida_1 ? String(row.salida_1).trim() : null,
-						entrada_2_raw: row.entrada_2 ? String(row.entrada_2).trim() : null,
-						salida_2_raw: row.salida_2 ? String(row.salida_2).trim() : null,
-
+						punches,
 						serverNow: now.toISO(),
 					},
 				};
@@ -3107,6 +3129,288 @@ const resolvers = {
 				}
 			},
 		),
+		CheckInZoneStatus: requireAuth(async (_, { input }, { user }) => {
+			console.log("CheckInZoneStatus called with input:", input);
+			const CHECK_IN_MARGIN_METERS = 2;
+			const MAX_LOCATION_ACCURACY_METERS = 75;
+
+			const GEO_BYPASS_EMP_IDS = new Set([
+				"900874",
+				"900683",
+				"900209",
+			]);
+
+			function expandBoxByMeters(box, marginMeters) {
+				const centerLatitude = (box.minLatitude + box.maxLatitude) / 2;
+
+				const latDelta = marginMeters / 111320;
+				const lonDelta =
+					marginMeters / (111320 * Math.cos((centerLatitude * Math.PI) / 180));
+
+				return {
+					...box,
+					minLatitude: box.minLatitude - latDelta,
+					maxLatitude: box.maxLatitude + latDelta,
+					minLongitude: box.minLongitude - lonDelta,
+					maxLongitude: box.maxLongitude + lonDelta,
+				};
+			}
+
+			const CHECK_IN_AREAS = [
+				{
+					name: "Pasillo Aduanas",
+					cornerA: {
+						latitude: 31.6216944444,
+						longitude: -106.4482222222,
+					},
+					cornerB: {
+						latitude: 31.6217222222,
+						longitude: -106.4482222222,
+					},
+				},
+				{
+					name: "Pasillo Recepcion",
+					cornerA: {
+						latitude: 31.6216944444,
+						longitude: -106.4482222222,
+					},
+					cornerB: {
+						latitude: 31.6216944444,
+						longitude: -106.4481666667,
+					},
+				},
+				{
+					name: "Pasillo Cafeteria",
+					cornerA: {
+						latitude: 31.621418,
+						longitude: -106.448181,
+					},
+					cornerB: {
+						latitude: 31.621449,
+						longitude: -106.448125,
+					},
+				},
+			]
+				.map((area) => ({
+					name: area.name,
+					minLatitude: Math.min(area.cornerA.latitude, area.cornerB.latitude),
+					maxLatitude: Math.max(area.cornerA.latitude, area.cornerB.latitude),
+					minLongitude: Math.min(area.cornerA.longitude, area.cornerB.longitude),
+					maxLongitude: Math.max(area.cornerA.longitude, area.cornerB.longitude),
+				}))
+				.map((area) => expandBoxByMeters(area, CHECK_IN_MARGIN_METERS));
+
+			function isValidNumber(value) {
+				return typeof value === "number" && Number.isFinite(value);
+			}
+
+			function isInsideBoxRange({ latitude, longitude, box }) {
+				return (
+					latitude >= box.minLatitude &&
+					latitude <= box.maxLatitude &&
+					longitude >= box.minLongitude &&
+					longitude <= box.maxLongitude
+				);
+			}
+
+			function findMatchingCheckInArea({ latitude, longitude, areas }) {
+				return areas.find((area) =>
+					isInsideBoxRange({
+						latitude,
+						longitude,
+						box: area,
+					}),
+				);
+			}
+
+			function normalizeCheckInLocationInput(input) {
+				return {
+					latitude: Number(input.latitude),
+					longitude: Number(input.longitude),
+					accuracy:
+						input.accuracy === null || input.accuracy === undefined
+							? null
+							: Number(input.accuracy),
+				};
+			}
+
+			function validateCheckInLocationInput(input) {
+				if (!isValidNumber(input.latitude) || !isValidNumber(input.longitude)) {
+					return {
+						isValid: false,
+						status: "INVALID_COORDINATES",
+						message: "Coordenadas inválidas.",
+					};
+				}
+
+				if (
+					input.latitude < -90 ||
+					input.latitude > 90 ||
+					input.longitude < -180 ||
+					input.longitude > 180
+				) {
+					return {
+						isValid: false,
+						status: "INVALID_COORDINATES",
+						message: "Las coordenadas están fuera del rango válido.",
+					};
+				}
+
+				if (
+					input.accuracy !== null &&
+					(!Number.isFinite(input.accuracy) || input.accuracy < 0)
+				) {
+					return {
+						isValid: false,
+						status: "INVALID_ACCURACY",
+						message: "Precisión de ubicación inválida.",
+					};
+				}
+
+				if (
+					input.accuracy !== null &&
+					input.accuracy > MAX_LOCATION_ACCURACY_METERS
+				) {
+					return {
+						isValid: false,
+						status: "LOW_ACCURACY",
+						message:
+							"La precisión de la ubicación es muy baja. Intenta nuevamente en un área más abierta.",
+					};
+				}
+
+				return {
+					isValid: true,
+					status: "VALID",
+					message: "Ubicación válida.",
+				};
+			}
+
+			function evaluateCheckInZone({ empId, input }) {
+				const normalizedInput = normalizeCheckInLocationInput(input);
+				const validation = validateCheckInLocationInput(normalizedInput);
+
+				if (!validation.isValid) {
+					return {
+						canCheckIn: false,
+						isInsideAllowedZone: false,
+						isBypass: false,
+						status: validation.status,
+						message: validation.message,
+						geofenceName: null,
+						latitude: isValidNumber(normalizedInput.latitude)
+							? normalizedInput.latitude
+							: null,
+						longitude: isValidNumber(normalizedInput.longitude)
+							? normalizedInput.longitude
+							: null,
+						accuracy:
+							normalizedInput.accuracy !== null &&
+								Number.isFinite(normalizedInput.accuracy)
+								? normalizedInput.accuracy
+								: null,
+						maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+					};
+				}
+
+				const shouldBypassGeofence = GEO_BYPASS_EMP_IDS.has(String(empId).trim());
+
+				if (shouldBypassGeofence) {
+					return {
+						canCheckIn: true,
+						isInsideAllowedZone: true,
+						isBypass: true,
+						status: "BYPASS_ALLOWED",
+						message: "Ubicación autorizada.",
+						geofenceName: "BYPASS",
+						latitude: normalizedInput.latitude,
+						longitude: normalizedInput.longitude,
+						accuracy: normalizedInput.accuracy,
+						maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+					};
+				}
+
+				const matchedCheckInArea = findMatchingCheckInArea({
+					latitude: normalizedInput.latitude,
+					longitude: normalizedInput.longitude,
+					areas: CHECK_IN_AREAS,
+				});
+
+				if (!matchedCheckInArea) {
+					return {
+						canCheckIn: false,
+						isInsideAllowedZone: false,
+						isBypass: false,
+						status: "OUTSIDE_GEOFENCE",
+						message: "No estás dentro de una zona permitida para hacer check-in.",
+						geofenceName: null,
+						latitude: normalizedInput.latitude,
+						longitude: normalizedInput.longitude,
+						accuracy: normalizedInput.accuracy,
+						maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+					};
+				}
+
+				return {
+					canCheckIn: true,
+					isInsideAllowedZone: true,
+					isBypass: false,
+					status: "INSIDE_GEOFENCE",
+					message: `Ubicación permitida: ${matchedCheckInArea.name}.`,
+					geofenceName: matchedCheckInArea.name,
+					latitude: normalizedInput.latitude,
+					longitude: normalizedInput.longitude,
+					accuracy: normalizedInput.accuracy,
+					maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+				};
+			}
+			try {
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				if (!empId) {
+					return {
+						success: false,
+						message: "No se pudo identificar al empleado desde el token.",
+						data: null,
+					};
+				}
+
+				if (!region) {
+					return {
+						success: false,
+						message: "No se pudo identificar la región desde el token.",
+						data: null,
+					};
+				}
+
+				const timezone = getBusinessTimezoneByRegion(region);
+				const now = DateTime.now().setZone(timezone);
+
+				const zoneStatus = evaluateCheckInZone({
+					empId,
+					input,
+				});
+
+				return {
+					success: true,
+					message: zoneStatus.message,
+					data: {
+						...zoneStatus,
+						checkedAt: now.toISO(),
+					},
+				};
+			} catch (err) {
+				console.error("CheckInZoneStatus error:", err);
+
+				return {
+					success: false,
+					message: "Error al validar la zona de check-in.",
+					data: null,
+				};
+			}
+		}),
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
@@ -3117,6 +3421,7 @@ const resolvers = {
 				};
 			}
 			const dbs = await selectRegion(region);
+			console.log("Selected DBs for region:", region, dbs);
 
 			let code = {};
 			switch (region) {
@@ -3236,6 +3541,10 @@ const resolvers = {
 				inactiveEmployees.has(normalizedNumEmp) &&
 				(region === "TIJ" || region === "SAL")
 			) {
+				console.log("Inactive employee login attempt:", {
+					numEmp: normalizedNumEmp,
+					region: normalizedRegion
+				});
 				return {
 					success: false,
 					message:
@@ -3251,6 +3560,7 @@ const resolvers = {
 				dbs.colabora,
 			);
 
+			console.log("isActive query result: ", JSON.stringify(isActive, null, 1));
 			// if (isActive[0].plant.trim() === "T-TSC" || isActive[0].plant.trim() === "2-TSC") {
 			// 	return {
 			// 		success: false,
@@ -3283,7 +3593,7 @@ const resolvers = {
 
 			const userData = queryNip[0];
 
-			// console.log("User data is: ", JSON.stringify(userData, null, 1));
+			console.log("User data is: ", JSON.stringify(userData, null, 1));
 			if (!userData) {
 				return {
 					success: false,
@@ -6046,13 +6356,21 @@ const resolvers = {
 				},
 				{
 					name: "Pasillo Cafeteria",
+					// cornerA: {
+					// 	latitude: 31.621418,
+					// 	longitude: -106.448181,
+					// },
+					// cornerB: {
+					// 	latitude: 31.621449,
+					// 	longitude: -106.448125,
+					// },
 					cornerA: {
-						latitude: 31.6215,
-						longitude: -106.44816,
+						latitude: 31.621539,
+						longitude: -106.448143,
 					},
 					cornerB: {
-						latitude: 31.6216,
-						longitude: -106.44808,
+						latitude: 31.6215320,
+						longitude: -106.448161,
 					},
 				},
 				// {
@@ -6206,6 +6524,148 @@ const resolvers = {
 				}
 			}
 
+			function normalizeCheckInLocationInput(input) {
+				return {
+					latitude: Number(input.latitude),
+					longitude: Number(input.longitude),
+					accuracy:
+						input.accuracy === null || input.accuracy === undefined
+							? null
+							: Number(input.accuracy),
+				};
+			}
+
+			function validateCheckInLocationInput(input) {
+				if (!isValidNumber(input.latitude) || !isValidNumber(input.longitude)) {
+					return {
+						isValid: false,
+						status: "INVALID_COORDINATES",
+						message: "Coordenadas inválidas.",
+					};
+				}
+
+				if (
+					input.latitude < -90 ||
+					input.latitude > 90 ||
+					input.longitude < -180 ||
+					input.longitude > 180
+				) {
+					return {
+						isValid: false,
+						status: "INVALID_COORDINATES",
+						message: "Las coordenadas están fuera del rango válido.",
+					};
+				}
+
+				if (
+					input.accuracy !== null &&
+					(!Number.isFinite(input.accuracy) || input.accuracy < 0)
+				) {
+					return {
+						isValid: false,
+						status: "INVALID_ACCURACY",
+						message: "Precisión de ubicación inválida.",
+					};
+				}
+
+				if (
+					input.accuracy !== null &&
+					input.accuracy > MAX_LOCATION_ACCURACY_METERS
+				) {
+					return {
+						isValid: false,
+						status: "LOW_ACCURACY",
+						message:
+							"La precisión de la ubicación es muy baja. Intenta nuevamente en un área más abierta.",
+					};
+				}
+
+				return {
+					isValid: true,
+					status: "VALID",
+					message: "Ubicación válida.",
+				};
+			}
+
+			function evaluateCheckInZone({ empId, input }) {
+				const normalizedInput = normalizeCheckInLocationInput(input);
+				const validation = validateCheckInLocationInput(normalizedInput);
+
+				if (!validation.isValid) {
+					return {
+						canCheckIn: false,
+						isInsideAllowedZone: false,
+						isBypass: false,
+						status: validation.status,
+						message: validation.message,
+						geofenceName: null,
+						latitude: isValidNumber(normalizedInput.latitude)
+							? normalizedInput.latitude
+							: null,
+						longitude: isValidNumber(normalizedInput.longitude)
+							? normalizedInput.longitude
+							: null,
+						accuracy:
+							normalizedInput.accuracy !== null &&
+								Number.isFinite(normalizedInput.accuracy)
+								? normalizedInput.accuracy
+								: null,
+						maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+					};
+				}
+
+				const shouldBypassGeofence = GEO_BYPASS_EMP_IDS.has(String(empId).trim());
+
+				if (shouldBypassGeofence) {
+					return {
+						canCheckIn: true,
+						isInsideAllowedZone: true,
+						isBypass: true,
+						status: "BYPASS_ALLOWED",
+						message: "Ubicación autorizada.",
+						geofenceName: "BYPASS",
+						latitude: normalizedInput.latitude,
+						longitude: normalizedInput.longitude,
+						accuracy: normalizedInput.accuracy,
+						maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+					};
+				}
+
+				const matchedCheckInArea = findMatchingCheckInArea({
+					latitude: normalizedInput.latitude,
+					longitude: normalizedInput.longitude,
+					areas: CHECK_IN_AREAS,
+				});
+
+				if (!matchedCheckInArea) {
+					return {
+						canCheckIn: false,
+						isInsideAllowedZone: false,
+						isBypass: false,
+						status: "OUTSIDE_GEOFENCE",
+						message: "No estás dentro de una zona permitida para hacer check-in.",
+						geofenceName: null,
+						latitude: normalizedInput.latitude,
+						longitude: normalizedInput.longitude,
+						accuracy: normalizedInput.accuracy,
+						maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+					};
+				}
+
+				return {
+					canCheckIn: true,
+					isInsideAllowedZone: true,
+					isBypass: false,
+					status: "INSIDE_GEOFENCE",
+					message: `Ubicación permitida: ${matchedCheckInArea.name}.`,
+					geofenceName: matchedCheckInArea.name,
+					latitude: normalizedInput.latitude,
+					longitude: normalizedInput.longitude,
+					accuracy: normalizedInput.accuracy,
+					maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+				};
+			}
+
 			try {
 				if (!user) throw new Error("Unauthorized");
 
@@ -6307,26 +6767,22 @@ const resolvers = {
 					};
 				}
 
-				let matchedCheckInArea = null;
+				const zoneStatus = evaluateCheckInZone({
+					empId,
+					input: normalizedInput,
+				});
 
-				if (!shouldBypassGeofence) {
-					matchedCheckInArea = findMatchingCheckInArea({
-						latitude: normalizedInput.latitude,
-						longitude: normalizedInput.longitude,
-						areas: CHECK_IN_AREAS,
-					});
-
-					if (!matchedCheckInArea) {
-						return {
-							success: false,
-							status: "Fuera de rango",
-							message: "Debes estar dentro del área permitida para hacer check-in.",
-							checkIn: {
-								type: normalizedInput.type,
-								registeredAt: now.toISO(),
-							},
-						};
-					}
+				if (!zoneStatus.canCheckIn) {
+					return {
+						success: false,
+						status: zoneStatus.status,
+						message: zoneStatus.message,
+						checkIn: {
+							type: normalizedInput.type,
+							registeredAt: now.toISO(),
+							geofenceName: zoneStatus.geofenceName,
+						},
+					};
 				}
 
 				let confidentiality;
@@ -6414,11 +6870,11 @@ const resolvers = {
 					status: "REGISTERED",
 					message: shouldBypassGeofence
 						? "Check-in validado correctamente."
-						: `Check-in validado correctamente en ${matchedCheckInArea.name}.`,
+						: `Check-in validado correctamente en ${zoneStatus.geofenceName}.`,
 					checkIn: {
 						type: normalizedInput.type,
 						registeredAt: now.toISO(),
-						geofenceName: shouldBypassGeofence ? "BYPASS" : matchedCheckInArea.name,
+						geofenceName: shouldBypassGeofence ? "BYPASS" : zoneStatus.geofenceName,
 					},
 				};
 			} catch (err) {
