@@ -2617,6 +2617,7 @@ const resolvers = {
 
 				return `${hours}:${minutes}`;
 			}
+
 			try {
 				if (!user) throw new Error("Unauthorized");
 
@@ -2638,6 +2639,8 @@ const resolvers = {
 					};
 				}
 
+				const dbs = await selectRegion(region);
+
 				const timezone = getBusinessTimezoneByRegion(region);
 				const now = DateTime.now().setZone(timezone);
 
@@ -2657,7 +2660,6 @@ const resolvers = {
 				const sqlStartOfDay = startOfDay.toFormat("yyyy-LL-dd HH:mm:ss");
 				const sqlEndOfDay = endOfDay.toFormat("yyyy-LL-dd HH:mm:ss");
 
-				const dbs = await selectRegion(region);
 
 				const result = await executeParameterizedQuery(
 					`
@@ -3364,6 +3366,26 @@ const resolvers = {
 					maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
 				};
 			}
+
+			async function getPendingPollStatus({ empId, dbs }) {
+				const result = await executeParameterizedQuery(
+					`
+					SELECT COUNT(1) AS pending_count
+					FROM POLL
+					WHERE LTRIM(RTRIM(CAST(PO_NUMERO AS VARCHAR(30)))) = @param1
+					`,
+					[String(empId).trim()],
+					"Error checking pending POLL records",
+					dbs.comparte,
+				);
+
+				const pendingPollCount = Number(result?.[0]?.pending_count || 0);
+
+				return {
+					hasPendingPoll: pendingPollCount > 0,
+					pendingPollCount,
+				};
+			}
 			try {
 				if (!user) throw new Error("Unauthorized");
 
@@ -3388,6 +3410,43 @@ const resolvers = {
 				const timezone = getBusinessTimezoneByRegion(region);
 				const now = DateTime.now().setZone(timezone);
 
+				const dbs = await selectRegion(region);
+
+				const pendingPoll = await getPendingPollStatus({ empId, dbs });
+
+				if (pendingPoll.hasPendingPoll) {
+					const normalizedInput = normalizeCheckInLocationInput(input);
+
+					return {
+						success: true,
+						message: "Tu última checada aún se está procesando.",
+						data: {
+							canCheckIn: false,
+							isInsideAllowedZone: false,
+							isBypass: false,
+							hasPendingPoll: true,
+							pendingPollCount: pendingPoll.pendingPollCount,
+							status: "PENDING_POLL",
+							message:
+								"Tu última checada aún se está procesando. Espera aproximadamente 1 minuto y actualiza tus checadas.",
+							geofenceName: null,
+							latitude: Number.isFinite(normalizedInput.latitude)
+								? normalizedInput.latitude
+								: null,
+							longitude: Number.isFinite(normalizedInput.longitude)
+								? normalizedInput.longitude
+								: null,
+							accuracy:
+								normalizedInput.accuracy !== null &&
+									Number.isFinite(normalizedInput.accuracy)
+									? normalizedInput.accuracy
+									: null,
+							maxAccuracy: MAX_LOCATION_ACCURACY_METERS,
+							checkedAt: now.toISO(),
+						},
+					};
+				}
+
 				const zoneStatus = evaluateCheckInZone({
 					empId,
 					input,
@@ -3398,6 +3457,8 @@ const resolvers = {
 					message: zoneStatus.message,
 					data: {
 						...zoneStatus,
+						hasPendingPoll: false,
+						pendingPollCount: 0,
 						checkedAt: now.toISO(),
 					},
 				};
@@ -3407,6 +3468,81 @@ const resolvers = {
 				return {
 					success: false,
 					message: "Error al validar la zona de check-in.",
+					data: null,
+				};
+			}
+		}),
+		CheckInPendingPollStatus: requireAuth(async (_, __, { user }) => {
+			async function getPendingPollStatus({ empId, dbs }) {
+				const result = await executeParameterizedQuery(
+					`
+					SELECT COUNT(1) AS pending_count
+					FROM POLL
+					WHERE LTRIM(RTRIM(CAST(PO_NUMERO AS VARCHAR(30)))) = @param1
+					`,
+					[String(empId).trim()],
+					"Error checking pending POLL records",
+					dbs.comparte,
+				);
+
+				const pendingPollCount = Number(result?.[0]?.pending_count || 0);
+
+				return {
+					hasPendingPoll: pendingPollCount > 0,
+					pendingPollCount,
+				};
+			}
+
+			try {
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				if (!empId) {
+					return {
+						success: false,
+						message: "No se pudo identificar al empleado desde el token.",
+						data: null,
+					};
+				}
+
+				if (!region) {
+					return {
+						success: false,
+						message: "No se pudo identificar la región desde el token.",
+						data: null,
+					};
+				}
+
+				console.log("CheckInPendingPollStatus for empId:", empId, "region:", region);
+
+				const dbs = await selectRegion(region);
+				const timezone = getBusinessTimezoneByRegion(region);
+				const now = DateTime.now().setZone(timezone);
+
+				const pendingPoll = await getPendingPollStatus({ empId, dbs });
+
+				return {
+					success: true,
+					message: pendingPoll.hasPendingPoll
+						? "Tu última checada aún se está procesando."
+						: "Ya puedes registrar una nueva checada.",
+					data: {
+						hasPendingPoll: pendingPoll.hasPendingPoll,
+						pendingPollCount: pendingPoll.pendingPollCount,
+						status: pendingPoll.hasPendingPoll ? "PENDING_POLL" : "READY",
+						message: pendingPoll.hasPendingPoll
+							? "Tu última checada aún se está procesando. Espera aproximadamente 1 minuto."
+							: "Ya puedes registrar una nueva checada.",
+						checkedAt: now.toISO(),
+					},
+				};
+			} catch (err) {
+				console.error("CheckInPendingPollStatus error:", err);
+
+				return {
+					success: false,
+					message: "Error al validar si hay checadas pendientes.",
 					data: null,
 				};
 			}
@@ -6311,7 +6447,7 @@ const resolvers = {
 			}
 		},
 		handleCheckIn: requireAuth(async (_, { input }, { user }) => {
-			console.log("Received check-in request");
+			console.log("Received check-in request: ", JSON.stringify(input, null, 1));
 
 			const CHECK_IN_MARGIN_METERS = 2;
 
@@ -6328,6 +6464,26 @@ const resolvers = {
 					maxLatitude: box.maxLatitude + latDelta,
 					minLongitude: box.minLongitude - lonDelta,
 					maxLongitude: box.maxLongitude + lonDelta,
+				};
+			}
+
+			async function getPendingPollStatus({ empId, dbs }) {
+				const result = await executeParameterizedQuery(
+					`
+					SELECT COUNT(1) AS pending_count
+					FROM POLL
+					WHERE LTRIM(RTRIM(CAST(PO_NUMERO AS VARCHAR(30)))) = @param1
+					`,
+					[String(empId).trim()],
+					"Error checking pending POLL records",
+					dbs.comparte,
+				);
+
+				const pendingPollCount = Number(result?.[0]?.pending_count || 0);
+
+				return {
+					hasPendingPoll: pendingPollCount > 0,
+					pendingPollCount,
 				};
 			}
 
@@ -6434,8 +6590,8 @@ const resolvers = {
 						input.accuracy === null || input.accuracy === undefined
 							? null
 							: Number(input.accuracy),
-					clientTimestamp: input.timestamp || null,
-					clientTimezone: input.timezone || null,
+					clientTimestamp: input.clientTimestamp || null,
+					clientTimezone: input.clientTimezone || null,
 					deviceId: input.deviceId || null,
 					platform: input.platform || null,
 					appVersion: input.appVersion || null,
@@ -6846,6 +7002,22 @@ const resolvers = {
 				// );
 
 				// console.log("Check-in registration result: ", registerCheckInMock);
+
+				const pendingPoll = await getPendingPollStatus({ empId, dbs });
+
+				if (pendingPoll.hasPendingPoll) {
+					return {
+						success: false,
+						status: "PENDING_POLL",
+						message:
+							"Tu última checada aún se está procesando. Espera aproximadamente 1 minuto y actualiza tus checadas.",
+						checkIn: {
+							type: normalizedInput.type,
+							registeredAt: now.toISO(),
+							geofenceName: null,
+						},
+					};
+				}
 
 				const registerCheckIn = await executeParameterizedQuery(
 					`

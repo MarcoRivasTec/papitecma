@@ -480,6 +480,7 @@ const typeDefs = gql`
 	type CheckInRecord {
 		type: String
 		registeredAt: String
+		geofenceName: String
 	}
 
 	type CheckInResponse {
@@ -606,6 +607,8 @@ const typeDefs = gql`
 		canCheckIn: Boolean!
 		isInsideAllowedZone: Boolean!
 		isBypass: Boolean!
+		hasPendingPoll: Boolean!
+		pendingPollCount: Int!
 		status: String!
 		message: String!
 		geofenceName: String
@@ -629,6 +632,28 @@ const typeDefs = gql`
 		entrada_raw: String
 		salida_raw: String
 	}
+
+	type CheckInPendingPollData {
+		hasPendingPoll: Boolean!
+		pendingPollCount: Int!
+		status: String!
+		message: String!
+		checkedAt: String
+	}
+
+	type CheckInPendingPollResponse {
+		success: Boolean!
+		message: String!
+		data: CheckInPendingPollData
+	}
+
+
+
+
+
+
+
+
 
 	type Query {
 		Alive: Response!
@@ -692,6 +717,7 @@ const typeDefs = gql`
 		getSupervisorAbsenceRequests(input: SupervisorAbsenceRequestsInput): [AbsenceRequest!]!
 
 		CheckInZoneStatus(input: CheckInZoneStatusInput!): CheckInZoneStatusResponse!
+		CheckInPendingPollStatus: CheckInPendingPollResponse!
 	}
 
 	type Mutation {
