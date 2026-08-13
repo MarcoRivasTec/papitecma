@@ -90,6 +90,28 @@ const configs = {
 			enableArithAbort: true,
 		},
 	},
+	compartecentral: {
+		user: process.env.DB_USER_COMPARTECENTRAL,
+		password: process.env.DB_PASS_COMPARTECENTRAL,
+		server: process.env.DB_HOST_COMPARTECENTRAL,
+		port: parseInt(process.env.DB_PORT_COMPARTECENTRAL, 10),
+		database: process.env.DB_NAME_COMPARTECENTRAL,
+		options: {
+			encrypt: false,
+			enableArithAbort: true,
+		},
+	},
+	compartewest: {
+		user: process.env.DB_USER_COMPARTEWEST,
+		password: process.env.DB_PASS_COMPARTEWEST,
+		server: process.env.DB_HOST_COMPARTEWEST,
+		port: parseInt(process.env.DB_PORT_COMPARTEWEST, 10),
+		database: process.env.DB_NAME_COMPARTEWEST,
+		options: {
+			encrypt: false,
+			enableArithAbort: true,
+		},
+	},
 	// tecma_csa: {
 	// 	user: process.env.DB_USER,
 	// 	password: process.env.DB_PASS,
