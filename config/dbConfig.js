@@ -112,16 +112,17 @@ const configs = {
 			enableArithAbort: true,
 		},
 	},
-	// tecma_csa: {
-	// 	user: process.env.DB_USER,
-	// 	password: process.env.DB_PASS,
-	// 	server: process.env.DB_HOST,
-	// 	database: process.env.DB_NAME_7,
-	// 	options: {
-	// 		encrypt: false,
-	// 		enableArithAbort: true,
-	// 	},
-	// },
+	csa: {
+		user: process.env.DB_USER_CSA,
+		password: process.env.DB_PASS_CSA,
+		server: process.env.DB_HOST_CSA,
+		database: process.env.DB_NAME_CSA,
+		port: parseInt(process.env.DB_PORT_CSA, 10),
+		options: {
+			encrypt: false,
+			enableArithAbort: true,
+		},
+	},
 };
 
 const poolPromises = {};

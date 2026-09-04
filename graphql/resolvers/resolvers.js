@@ -364,6 +364,7 @@ const resolvers = {
 				&& numEmp !== "900827"
 				&& numEmp !== "900869"
 				&& numEmp !== "900950"
+				&& numEmp !== "900951"
 			) {
 
 
@@ -623,7 +624,7 @@ const resolvers = {
 						CB_DER_PAG as GANADOS, 
 						CB_V_GOZO as TOMADOS,
 						CASE
-							WHEN CB_NIVEL0 IN ('H75', 'H79') THEN
+							WHEN CB_NIVEL0 IN ('H75') THEN
 								CB_DER_PAG - CB_V_PAGO
 								+
 								(
@@ -766,45 +767,441 @@ const resolvers = {
 			};
 		},
 		Recibos: async (_, { year, region, proy, numEmp }) => {
-			const dbs = await selectRegion(region);
-			const queryPeriodosBloqueo = await executeQuery(
-				`Select Periodo
-				From K_NomBloqueo 
-				Where Proyecto = '${proy}' 
-				And Anio = '${year}'
-				And Fecha >= GetDate()`,
-				"Error fetching bloqueo information",
-				dbs.kioskotek,
-			);
-			const periodosBloqueoArray = queryPeriodosBloqueo.map(
-				(row) => row.Periodo,
-			);
-			const periodosBloqueo = periodosBloqueoArray.join(", ");
+			const PAYROLL_REGION_CONFIG = {
+				JRZ: {
+					csaRegion: "Central",
+					plantLevel: "7",
+					areaLevel: "5",
+				},
+				MTY: {
+					csaRegion: "Central",
+					plantLevel: "7",
+					areaLevel: "5",
+				},
+				AMX: {
+					csaRegion: "AMX",
+					plantLevel: "7",
+					areaLevel: "5",
+				},
+				SAL: {
+					csaRegion: "West",
+					plantLevel: "1",
+					areaLevel: "6",
+				},
+				TIJ: {
+					csaRegion: "West",
+					plantLevel: "1",
+					areaLevel: "6",
+				},
+			};
 
+			const escapeSqlString = (value) =>
+				String(value ?? "")
+					.trim()
+					.replace(/'/g, "''");
+
+			const getPayrollRegionConfig = (region) => {
+				const normalizedRegion = String(region)
+					.trim()
+					.toUpperCase();
+
+				const config = PAYROLL_REGION_CONFIG[normalizedRegion];
+
+				if (!config) {
+					throw new Error(
+						`Unsupported TMC region: ${region}`,
+					);
+				}
+
+				return {
+					...config,
+					tmcRegion: normalizedRegion,
+				};
+			};
+
+			const getUniquePeriods = (...sources) => {
+				const periods = sources
+					.flat()
+					.map((row) => Number(row.Periodo))
+					.filter((period) => Number.isInteger(period));
+
+				return [...new Set(periods)].sort(
+					(a, b) => a - b,
+				);
+			};
+			console.log("[Recibos] Query parameters:", {
+				year,
+				region,
+				proy,
+				numEmp,
+			});
+
+			/*
+			 * 1. Normalize input / resolve region configuration
+			 */
+			const config = getPayrollRegionConfig(region);
+
+			const parsedYear = Number(year);
+
+			if (!Number.isInteger(parsedYear)) {
+				throw new Error("Invalid year.");
+			}
+
+			const safeProject = escapeSqlString(proy);
+			const safeEmployee = escapeSqlString(numEmp);
+
+			if (!safeEmployee) {
+				throw new Error("Employee number is required.");
+			}
+
+			const dbs = await selectRegion(
+				config.tmcRegion,
+			);
+
+			/*
+			 * 2. Legacy payroll restrictions
+			 *
+			 * Keep the existing K_NomBloqueo behavior.
+			 */
+			const legacyRestrictionRows =
+				await executeQuery(
+					`
+            SELECT DISTINCT
+                Periodo
+            FROM K_NomBloqueo
+            WHERE Proyecto = '${safeProject}'
+              AND Anio = ${parsedYear}
+              AND Fecha >= GETDATE()
+            `,
+					"Error fetching legacy payroll restrictions",
+					dbs.kioskotek,
+				);
+
+			console.log(
+				"[Recibos] Legacy restrictions:",
+				legacyRestrictionRows,
+			);
+
+			/*
+			 * 3. Resolve employee scope from COLABORA
+			 *
+			 * Central / AMX:
+			 *   plant -> CB_NIVEL7
+			 *   area  -> CB_NIVEL5
+			 *
+			 * West:
+			 *   plant -> CB_NIVEL1
+			 *   area  -> CB_NIVEL6
+			 */
+			const employeeScopeRows =
+				await executeQuery(
+					`
+            SELECT TOP 1
+                LTRIM(RTRIM(
+                    CAST(
+                        CB_NIVEL${config.plantLevel}
+                        AS VARCHAR(50)
+                    )
+                )) AS plantCode,
+
+                LTRIM(RTRIM(
+                    CAST(
+                        CB_NIVEL${config.areaLevel}
+                        AS VARCHAR(50)
+                    )
+                )) AS areaCode
+
+            FROM COLABORA
+            WHERE CB_CODIGO = '${safeEmployee}'
+            `,
+					"Error fetching employee payroll scope",
+					dbs.colabora,
+				);
+
+			const employeeScope =
+				employeeScopeRows[0] ?? {};
+
+			const plantCode = escapeSqlString(
+				employeeScope.plantCode,
+			);
+
+			/*
+			 * IMPORTANT:
+			 * Area is a code/string, NOT necessarily INT.
+			 *
+			 * Example:
+			 * 10-8
+			 */
+			const areaCode = escapeSqlString(
+				employeeScope.areaCode,
+			);
+
+			console.log("[Recibos] Employee scope:", {
+				employee: safeEmployee,
+				csaRegion: config.csaRegion,
+				projectCode: safeProject || null,
+				plantCode: plantCode || null,
+				areaCode: areaCode || null,
+			});
+
+			/*
+			 * 4. Build scope conditions for the new CSA system
+			 */
+
+			const projectCondition = safeProject
+				? `
+            OR (
+                pr.restriction_type = 'PROJECT'
+                AND LTRIM(RTRIM(
+                    CAST(
+                        pr.project_code
+                        AS VARCHAR(50)
+                    )
+                )) = '${safeProject}'
+            )
+        `
+				: "";
+
+			const plantCondition = plantCode
+				? `
+            OR (
+                pr.restriction_type = 'PLANT'
+                AND LTRIM(RTRIM(
+                    CAST(
+                        pr.plant_code
+                        AS VARCHAR(50)
+                    )
+                )) = '${plantCode}'
+            )
+        `
+				: "";
+
+			const employeeCondition = safeEmployee
+				? `
+            OR (
+                pr.restriction_type = 'EMPLOYEE'
+                AND LTRIM(RTRIM(
+                    CAST(
+                        pr.employee_id
+                        AS VARCHAR(50)
+                    )
+                )) = '${safeEmployee}'
+            )
+        `
+				: "";
+
+			/*
+			 * Area can contain values such as:
+			 *
+			 * 10-8
+			 * A-2
+			 * ABC
+			 *
+			 * so compare it as VARCHAR.
+			 */
+			const areaCondition = areaCode
+				? `
+            OR (
+                pr.restriction_type = 'AREA'
+                AND LTRIM(RTRIM(
+                    CAST(
+                        pr.area_id
+                        AS VARCHAR(50)
+                    )
+                )) = '${areaCode}'
+            )
+        `
+				: "";
+
+			/*
+			 * CONFIDENTIALITY behaves differently by CSA region:
+			 *
+			 * West:
+			 *     confidentiality -> plant_code
+			 *
+			 * Central / AMX:
+			 *     confidentiality -> project_code
+			 */
+			let confidentialityCondition = "";
+
+			if (
+				config.csaRegion === "West" &&
+				plantCode
+			) {
+				confidentialityCondition = `
+            OR (
+                pr.restriction_type =
+                    'CONFIDENTIALITY'
+
+                AND LTRIM(RTRIM(
+                    CAST(
+                        pr.plant_code
+                        AS VARCHAR(50)
+                    )
+                )) = '${plantCode}'
+            )
+        `;
+			} else if (
+				config.csaRegion !== "West" &&
+				safeProject
+			) {
+				confidentialityCondition = `
+            OR (
+                pr.restriction_type =
+                    'CONFIDENTIALITY'
+
+                AND LTRIM(RTRIM(
+                    CAST(
+                        pr.project_code
+                        AS VARCHAR(50)
+                    )
+                )) = '${safeProject}'
+            )
+        `;
+			}
+
+			/*
+			 * 5. New CSA payroll restrictions
+			 *
+			 * executeQuery understands "csa" directly,
+			 * so this database does NOT depend on
+			 * selectRegion().
+			 */
+			const newRestrictionRows =
+				await executeQuery(
+					`
+            SELECT DISTINCT
+                pr.period AS Periodo
+
+            FROM dbo.payroll_period_restrictions pr
+
+            INNER JOIN dbo.regions r
+                ON r.region_id = pr.region_id
+
+            WHERE
+                r.region_name =
+                    '${escapeSqlString(
+						config.csaRegion,
+					)}'
+
+                AND pr.is_active = 1
+                AND pr.is_deleted = 0
+
+                AND pr.effective_start_date
+                    <= CAST(GETDATE() AS DATE)
+
+                AND (
+                    pr.effective_end_date IS NULL
+                    OR pr.effective_end_date
+                        >= CAST(GETDATE() AS DATE)
+                )
+
+                AND (
+                    /*
+                     * Entire CSA region
+                     */
+                    pr.restriction_type = 'REGION'
+
+                    ${projectCondition}
+
+                    ${plantCondition}
+
+                    ${employeeCondition}
+
+                    ${areaCondition}
+
+                    ${confidentialityCondition}
+                )
+            `,
+					"Error fetching CSA payroll restrictions",
+					"csa",
+				);
+
+			console.log(
+				"[Recibos] New restrictions:",
+				newRestrictionRows,
+			);
+
+			/*
+			 * 6. Merge old + new restrictions
+			 */
+			const blockedPeriods = getUniquePeriods(
+				legacyRestrictionRows,
+				newRestrictionRows,
+			);
+
+			console.log("[Recibos] Restriction result:", {
+				tmcRegion: config.tmcRegion,
+				csaRegion: config.csaRegion,
+				employee: safeEmployee,
+				projectCode: safeProject || null,
+				plantCode: plantCode || null,
+				areaCode: areaCode || null,
+				legacyPeriods:
+					legacyRestrictionRows.map(
+						(row) => row.Periodo,
+					),
+				newPeriods:
+					newRestrictionRows.map(
+						(row) => row.Periodo,
+					),
+				blockedPeriods,
+			});
+
+			const blockedPeriodsSql =
+				blockedPeriods.length > 0
+					? `
+                AND NOM.PE_NUMERO NOT IN (
+                    ${blockedPeriods.join(", ")}
+                )
+            `
+					: "";
+
+			/*
+			 * 7. Get payroll receipts
+			 */
 			const recibos = await executeQuery(
-				`Select	NOM.PE_NUMERO As nomina,
-						NOM.NO_PERCEPC As percepciones,
-						NOM.NO_DEDUCCI  As deducciones,
-						NOM.NO_NETO As neto,
-						PER.PE_FEC_FIN As fecha
-				From NOMINA As NOM
-				Inner Join PERIODO As PER
-				On NOM.PE_YEAR = PER.PE_YEAR
-				And NOM.PE_TIPO = PER.PE_TIPO
-				And NOM.PE_NUMERO = PER.PE_NUMERO
-				Where NOM.PE_YEAR = '${year}' 
-				And CB_CODIGO = '${numEmp}' 
-				And NOM.PE_NUMERO < 950
-				And NO_STATUS>= 5
-				And GETDATE() > PE_FEC_FIN + 5
-				${periodosBloqueo !== "" ? `And NOM.PE_NUMERO Not In (${periodosBloqueo})` : ""}
-				Order by NOM.PE_NUMERO Desc`,
-				"Error fetching bloqueo information",
+				`
+        SELECT
+            NOM.PE_NUMERO AS nomina,
+            NOM.NO_PERCEPC AS percepciones,
+            NOM.NO_DEDUCCI AS deducciones,
+            NOM.NO_NETO AS neto,
+            PER.PE_FEC_FIN AS fecha
+
+        FROM NOMINA AS NOM
+
+        INNER JOIN PERIODO AS PER
+            ON NOM.PE_YEAR = PER.PE_YEAR
+            AND NOM.PE_TIPO = PER.PE_TIPO
+            AND NOM.PE_NUMERO = PER.PE_NUMERO
+
+        WHERE
+            NOM.PE_YEAR = ${parsedYear}
+
+            AND NOM.CB_CODIGO =
+                '${safeEmployee}'
+
+            AND NOM.PE_NUMERO < 950
+
+            AND NOM.NO_STATUS >= 5
+
+            AND GETDATE() >
+                DATEADD(
+                    DAY,
+                    5,
+                    PER.PE_FEC_FIN
+                )
+
+            ${blockedPeriodsSql}
+
+        ORDER BY
+            NOM.PE_NUMERO DESC
+        `,
+				"Error fetching recibos",
 				dbs.colabora,
 			);
-			// console.log("Recibos a retornar: ", recibos);
-			// const recibos = recibosQuery.recordset;
-			// console.log("Recibos: ", recibosQuery);
+
 			return recibos;
 		},
 		RecibosYears: async (_, { numEmp, region }) => {
@@ -1487,152 +1884,6 @@ const resolvers = {
 			// 	return { success: false, message: "Done" }
 			// }
 		},
-		// SuperiorRequests: async (_, { numEmp, region }) => {
-		// 	const dbs = await selectRegion(region);
-
-		// 	// const supervisorData = await executeQuery(
-		// 	// 	`SELECT TB_CODIGO as supervisor_id,
-		// 	// 			TB_TEXTO as superior_id
-		// 	// 	FROM NIVEL3
-		// 	// 	WHERE TB_NUMERO = '${numEmp}'`,
-		// 	// 	"Error fetching supervisor information",
-		// 	// 	dbs.colabora
-		// 	// );
-
-		// 	// console.log("Supervisor data: ", supervisorData[0])
-
-		// 	const motives = await executeQuery(
-		// 		`SELECT * FROM motivos_solicitud`,
-		// 		"Error fetching motives information",
-		// 		dbs.tecmamovil,
-		// 	);
-
-		// 	// console.log("\nMotives: ", motives)
-
-		// 	const statuses = await executeQuery(
-		// 		`SELECT * FROM estados_solicitud`,
-		// 		"Error fetching statuses information",
-		// 		dbs.tecmamovil,
-		// 	);
-
-		// 	// console.log("\Statuses: ", statuses)
-
-		// 	const supervisorRequests = await executeQuery(
-		// 		`SELECT [id_solicitud] as id
-		// 				,[id_empleado] as numEmp
-		// 				,[tipo_solicitud] as type
-		// 				,[estado] as status
-		// 				,[fecha_inicio] as start_date
-		// 				,[fecha_fin] as end_date
-		// 				,[fecha_solicitud] as request_date
-		// 				,[dias_totales] as total_days
-		// 				,[id_motivo] as motive
-		// 				,[comentario_empleado] as comment
-		// 				,[pre_aprobado_por] as pre_approved_by
-		// 				,[fecha_pre_aprobacion] as pre_approval_date
-		// 				,[aprobado_por] as approved_by
-		// 				,[fecha_aprobacion] as approval_date
-		// 				,[comentario_aprobador] as approver_comment
-		// 				,[rechazada_por] as rejected_by
-		// 				,[fecha_rechazo] as rejection_date
-		// 				,[cancelada_por] as  cancelled_by
-		// 				,[fecha_cancelacion] as cancellation_date
-		// 			FROM solicitudes_ausencia
-		// 			WHERE autoriza = '${numEmp}'`,
-		// 		"Error fetching supervisor information",
-		// 		dbs.tecmamovil,
-		// 	);
-
-		// 	console.warn("\n\nSupervisor requests: ", supervisorRequests);
-
-		// 	// Create maps for fast lookup
-		// 	const motiveMap = {};
-		// 	const statusMap = {};
-
-		// 	motives.forEach((m) => (motiveMap[m.id_motivo] = m.descripcion));
-		// 	statuses.forEach((s) => (statusMap[s.id_estado] = s.descripcion));
-
-		// 	// Replace codes with descriptions
-		// 	const formattedRequests = supervisorRequests.map((request) => ({
-		// 		...request,
-		// 		motive:
-		// 			request.motive_id !== null ? motiveMap[request.motive_id] : null,
-		// 		status: statusMap[request.status],
-		// 	}));
-
-		// 	// Create a cache for employee names to avoid repeated queries
-		// 	const employeeNameCache = {};
-
-		// 	// For each request, fetch the full name based on numEmp, using the cache if available.
-		// 	for (let request of formattedRequests) {
-		// 		if (!employeeNameCache[request.numEmp]) {
-		// 			const userFullName = await executeQuery(
-		// 				`SELECT CB_NOMBRES as names,
-		// 						CB_APE_PAT as surname_1,
-		// 						CB_APE_MAT as surname_2
-		// 				FROM COLABORA
-		// 				WHERE CB_CODIGO = '${request.numEmp}'`,
-		// 				"Error fetching user name info",
-		// 				dbs.colabora,
-		// 			);
-
-		// 			if (userFullName && userFullName.length > 0) {
-		// 				const { names, surname_1, surname_2 } = userFullName[0];
-		// 				employeeNameCache[request.numEmp] =
-		// 					`${names} ${surname_1} ${surname_2}`;
-		// 			} else {
-		// 				employeeNameCache[request.numEmp] = null;
-		// 			}
-		// 		}
-		// 		// Append the full name to the request entry
-		// 		request.name = employeeNameCache[request.numEmp];
-		// 	}
-
-		// 	return { success: true, message: "Done", data: formattedRequests };
-		// 	if (isSupervisor[0].result && numEmp !== 0 && numEmp !== "0") {
-		// 		const activeEmployees = await executeQuery(
-		// 			`SELECT CB_CODIGO as employeeNum
-		// 				FROM COLABORA
-		// 				WHERE CB_NIVEL3 = '${isSupervisor[0].result.trim()}'
-		// 				AND CB_ACTIVO = 'S'`,
-		// 			"Error fetching employees information",
-		// 			dbs.colabora,
-		// 		);
-
-		// 		if (activeEmployees && activeEmployees.length > 0) {
-		// 			console.log("Active employees under supervisor: ", activeEmployees);
-		// 			const employeeNums = activeEmployees
-		// 				.map((emp) => `'${emp.employeeNum}'`) // wrap each number in single quotes
-		// 				.join(", ");
-
-		// 			console.log("Employee numbers: ", employeeNums);
-
-		// 			const employeeRequests = await executeQuery(
-		// 				`SELECT No as numEmp, Nombre as name, Carta as type
-		// 					FROM K_Solicitudes
-		// 					WHERE No IN (${employeeNums})
-		// 					AND Pendiente = '0'
-		// 					AND (Carta = 'Vacaciones'
-		// 					or Carta = 'Permiso')`,
-		// 				"Error fetching employee requests information",
-		// 				dbs.kioskotek,
-		// 			);
-		// 			if (employeeRequests && employeeRequests.length > 0) {
-		// 				return {
-		// 					success: true,
-		// 					message: "Available requests",
-		// 					data: employeeRequests,
-		// 				};
-		// 			} else {
-		// 				return { success: true, message: "No requests" };
-		// 			}
-		// 			console.log("Employee requests: ", employeeRequests);
-		// 		}
-		// 		return { success: true, message: "Done" };
-		// 	} else {
-		// 		return { success: false, message: "Done" };
-		// 	}
-		// },
 		ComplaintInfo: async (_, { region }) => {
 			// const dbs = await selectRegion(region);
 
@@ -3133,13 +3384,14 @@ const resolvers = {
 		),
 		CheckInZoneStatus: requireAuth(async (_, { input }, { user }) => {
 			console.log("CheckInZoneStatus called with input:", input);
-			const CHECK_IN_MARGIN_METERS = 2;
+			const CHECK_IN_MARGIN_METERS = 18;
 			const MAX_LOCATION_ACCURACY_METERS = 75;
 
 			const GEO_BYPASS_EMP_IDS = new Set([
 				"900874",
 				"900683",
 				"900209",
+				"900951",
 			]);
 
 			function expandBoxByMeters(box, marginMeters) {
@@ -3665,6 +3917,27 @@ const resolvers = {
 				"43662",
 				"41682",
 				"42202",
+				"41554",
+				"42682",
+				"38909",
+				"35517",
+				"40651",
+				"37818",
+				"43378",
+				"43870",
+				"37406",
+				"41687",
+				"43083",
+				"43604",
+				"40352",
+				"42852",
+				"43745",
+				"41794",
+				"42364",
+				"42803",
+				"43791",
+				"42358",
+				"2145"
 			]);
 
 			const normalizedNumEmp = String(numEmp).trim();
@@ -5664,502 +5937,6 @@ const resolvers = {
 				};
 			}
 		},
-		// requestAbsence: async (_, { input }) => {
-		// 	try {
-		// 		const {
-		// 			numEmp,
-		// 			region,
-		// 			type,
-		// 			start_date,
-		// 			end_date,
-		// 			days,
-		// 			motive,
-		// 			comment,
-		// 		} = input;
-		// 		const dbs = await selectRegion(region);
-		// 		console.log("Input is: ", JSON.stringify(input, null, 1));
-
-		// 		// Validate the input
-		// 		if (!numEmp || !region || !type || !start_date || !days) {
-		// 			return {
-		// 				success: false,
-		// 				message: "Input is invalid. Please provide all required fields.",
-		// 			};
-		// 		}
-
-		// 		const startDateSQL = `'${new Date(start_date).toISOString().split("T")[0]}'`;
-		// 		const endDateSQL = end_date
-		// 			? `'${new Date(end_date).toISOString().split("T")[0]}'`
-		// 			: "NULL";
-
-		// 		// const approverData = await executeQuery(
-		// 		// 	`SELECT CB_NIVEL3 as approver FROM COLABORA WHERE CB_CODIGO = '${numEmp}'`,
-		// 		// 	"Error fetching approver",
-		// 		// 	dbs.colabora
-		// 		// );
-
-		// 		const approverData = await executeQuery(
-		// 			`SELECT N3.TB_NUMERO As approver
-		// 			FROM COLABORA As C
-		// 			INNER JOIN NIVEL3 As N3 ON C.CB_NIVEL3 = N3.TB_CODIGO
-		// 			WHERE CB_CODIGO = '${numEmp}'`,
-		// 			"Error fetching approver",
-		// 			dbs.colabora,
-		// 		);
-
-		// 		// console.warn("Approver data: ", approverData[0])
-
-		// 		// console.warn("Employee authorizer: ", authorizerData[0].authorizer)
-		// 		// console.log("Start date: ", startDateSQL, "End date: ", endDateSQL)
-
-		// 		const query = `INSERT INTO solicitudes_ausencia (
-		// 						id_empleado,
-		// 						tipo_solicitud,
-		// 						fecha_inicio,
-		// 						fecha_fin,
-		// 						fecha_solicitud,
-		// 						autoriza,
-		// 						estado,
-		// 						id_motivo,
-		// 						comentario_empleado,
-		// 						dias_totales
-		// 					)
-		// 					VALUES (
-		// 						'${numEmp}',
-		// 						'${type}',
-		// 						${startDateSQL},
-		// 						${endDateSQL},
-		// 						GETDATE(),
-		// 						'${approverData[0].approver.toString().trim()}',
-		// 						1,
-		// 						${motive ? `'${motive}'` : null},
-		// 						${comment ? `'${comment}'` : null},
-		// 						${days});`;
-		// 		// console.warn("Query is: ", query)
-
-		// 		await executeQuery(query, "Error registering request", dbs.tecmamovil);
-		// 		return {
-		// 			success: true,
-		// 			message: "Se registró la solicitud correctamente.",
-		// 		};
-		// 	} catch (error) {
-		// 		console.error("Request absence caught error: ", error);
-		// 		return {
-		// 			success: false,
-		// 			message: "Ocurrió un error al registrar la solicitud.",
-		// 		};
-		// 	}
-		// },
-		// requestAbsence: requireAuth(async (_, { input }, { user }) => {
-		// 	const ABSENCE_STATUS = {
-		// 		PENDING: 1,
-		// 		PRE_APPROVED: 2,
-		// 		APPROVED: 3,
-		// 		REJECTED: 4,
-		// 		CANCELLED: 5,
-		// 	};
-
-		// 	const ABSENCE_ACTION = {
-		// 		APPROVE: "approve",
-		// 		REJECT: "reject",
-		// 		CANCEL: "cancel",
-		// 	};
-
-		// 	const toSqlDate = (value) => {
-		// 		if (!value) return null;
-
-		// 		const date = new Date(value);
-
-		// 		if (Number.isNaN(date.getTime())) {
-		// 			throw new Error(`Invalid date value: ${value}`);
-		// 		}
-
-		// 		return date.toISOString().split("T")[0];
-		// 	};
-
-		// 	const normalizeOptionalString = (value) => {
-		// 		if (value === undefined || value === null) return null;
-
-		// 		const trimmed = value.toString().trim();
-
-		// 		return trimmed === "" ? null : trimmed;
-		// 	};
-
-		// 	const normalizeId = (value) => {
-		// 		if (value === undefined || value === null) return null;
-
-		// 		const trimmed = value.toString().trim();
-
-		// 		return trimmed === "" ? null : trimmed;
-		// 	};
-
-		// 	const getRegionLevelConfig = (region) => {
-		// 		switch (region?.toUpperCase()) {
-		// 			case "JRZ":
-		// 			case "MTY":
-		// 			case "AMX":
-		// 				return {
-		// 					supervisor: "3",
-		// 					area: "5",
-		// 					project: "0",
-		// 					plant: "7",
-		// 				};
-
-		// 			case "SAL":
-		// 			case "TIJ":
-		// 				return {
-		// 					supervisor: "8",
-		// 					project: "5",
-		// 					area: "6",
-		// 					plant: "1",
-		// 				};
-
-		// 			default:
-		// 				throw new Error(`Unsupported region: ${region}`);
-		// 		}
-		// 	};
-
-		// 	try {
-		// 		if (!user) throw new Error("Unauthorized");
-
-		// 		const { empId, region } = user;
-
-		// 		if (!empId) {
-		// 			return {
-		// 				success: false,
-		// 				message: "No se pudo identificar al empleado desde el token.",
-		// 			};
-		// 		}
-
-		// 		if (!region) {
-		// 			return {
-		// 				success: false,
-		// 				message: "No se pudo identificar la región desde el token.",
-		// 			};
-		// 		}
-
-		// 		const { type, start_date, end_date, days, motive, comment } = input;
-
-		// 		console.log("RequestAbsence input:", JSON.stringify(input, null, 1));
-
-		// 		if (type == null || !start_date || days == null) {
-		// 			return {
-		// 				success: false,
-		// 				message: "Input is invalid. Please provide all required fields.",
-		// 			};
-		// 		}
-
-		// 		if (days <= 0) {
-		// 			return {
-		// 				success: false,
-		// 				message: "Los días solicitados deben ser mayores a cero.",
-		// 			};
-		// 		}
-
-		// 		const dbs = await selectRegion(region);
-		// 		const code = getRegionLevelConfig(region);
-
-		// 		const startDateSQL = toSqlDate(start_date);
-		// 		const endDateSQL = toSqlDate(end_date);
-
-		// 		const employeeData = await executeParameterizedQuery(
-		// 			`
-		// 			SELECT TOP 1
-		// 				C.CB_CODIGO AS EmployeeId,
-
-		// 				LTRIM(RTRIM(CONCAT(
-		// 					ISNULL(C.CB_APE_PAT, ''),
-		// 					' ',
-		// 					ISNULL(C.CB_APE_MAT, ''),
-		// 					', ',
-		// 					ISNULL(C.CB_NOMBRES, '')
-		// 				))) AS EmployeeName,
-
-		// 				C.CB_NIVEL${code.plant} AS PlantId,
-		// 				C.CB_NIVEL${code.project} AS ProjectId,
-		// 				C.CB_NIVEL${code.area} AS AreaId,
-
-		// 				C.CB_NIVEL${code.supervisor} AS SupervisorId,
-		// 				N${code.supervisor}.TB_NUMERO AS SuperiorAppId,
-
-		// 				C.CB_TURNO AS TurnId,
-		// 				C.CB_PUESTO AS JobTitleId,
-		// 				C.CB_CLASIFI AS ClassificationId
-		// 			FROM COLABORA AS C
-		// 			LEFT JOIN NIVEL${code.supervisor} AS N${code.supervisor}
-		// 				ON C.CB_NIVEL${code.supervisor} = N${code.supervisor}.TB_CODIGO
-		// 			WHERE C.CB_CODIGO = @param1
-		// 			`,
-		// 			[empId],
-		// 			"Error fetching employee information",
-		// 			dbs.colabora,
-		// 		);
-
-		// 		if (!employeeData || employeeData.length === 0) {
-		// 			return {
-		// 				success: false,
-		// 				message: "No se encontró información del empleado.",
-		// 			};
-		// 		}
-
-		// 		const employee = employeeData[0];
-
-		// 		if (!employee.SuperiorAppId) {
-		// 			console.warn(
-		// 				"Employee does not have a TecmaMovil superior app id assigned:",
-		// 				empId,
-		// 			);
-		// 		}
-
-		// 		await executeParameterizedQuery(
-		// 			`
-		// 			INSERT INTO dbo.AbsenceRequests (
-		// 				EmployeeId,
-		// 				EmployeeName,
-		// 				RequestTypeId,
-		// 				StatusId,
-		// 				ReasonId,
-		// 				StartDate,
-		// 				EndDate,
-		// 				TotalDays,
-		// 				EmployeeComment,
-		// 				PlantId,
-		// 				ProjectId,
-		// 				AreaId,
-		// 				SupervisorId,
-		// 				TurnId,
-		// 				JobTitleId,
-		// 				ClassificationId
-		// 			)
-		// 			VALUES (
-		// 				@param1,
-		// 				@param2,
-		// 				@param3,
-		// 				@param4,
-		// 				@param5,
-		// 				@param6,
-		// 				@param7,
-		// 				@param8,
-		// 				@param9,
-		// 				@param10,
-		// 				@param11,
-		// 				@param12,
-		// 				@param13,
-		// 				@param14,
-		// 				@param15,
-		// 				@param16
-		// 			);
-		// 			`,
-		// 			[
-		// 				normalizeId(employee.EmployeeId),
-		// 				employee.EmployeeName?.toString().trim() || "",
-		// 				type,
-		// 				ABSENCE_STATUS.PENDING,
-		// 				motive ?? null,
-		// 				startDateSQL,
-		// 				endDateSQL,
-		// 				days,
-		// 				normalizeOptionalString(comment),
-		// 				normalizeId(employee.PlantId),
-		// 				normalizeId(employee.ProjectId),
-		// 				normalizeId(employee.AreaId),
-		// 				normalizeId(employee.SupervisorId),
-		// 				normalizeId(employee.TurnId),
-		// 				normalizeId(employee.JobTitleId),
-		// 				normalizeId(employee.ClassificationId),
-		// 			],
-		// 			"Error registering absence request",
-		// 			dbs.tecmamovil,
-		// 		);
-
-		// 		return {
-		// 			success: true,
-		// 			message: "Se registró la solicitud correctamente.",
-		// 		};
-		// 	} catch (error) {
-		// 		console.error("Request absence caught error:", error);
-
-		// 		return {
-		// 			success: false,
-		// 			message: "Ocurrió un error al registrar la solicitud.",
-		// 		};
-		// 	}
-		// }),
-		// handleAbsenceRequest: async (_, { input }) => {
-		// 	try {
-		// 		const { numEmp, region, request_id, action, comment, motive } = input;
-		// 		const dbs = await selectRegion(region);
-		// 		console.log("Input is: ", JSON.stringify(input, null, 1));
-
-		// 		// Validate the input
-		// 		if (!numEmp || !region || !request_id || !action) {
-		// 			return {
-		// 				success: false,
-		// 				message: "Input is invalid. Please provide all required fields.",
-		// 			};
-		// 		}
-
-		// 		const approverData = await executeQuery(
-		// 			`SELECT TB_CODIGO as supervisor_id,
-		// 					TB_TEXTO as superior_id
-		// 			FROM NIVEL3
-		// 			WHERE TB_NUMERO = '${numEmp}'`,
-		// 			"Error fetching supervisor information",
-		// 			dbs.colabora,
-		// 		);
-
-		// 		console.warn("Employee authorizer: ", approverData[0]);
-
-		// 		switch (action) {
-		// 			case "approve":
-		// 				const formatISOToUTCDateTime = (isoString) => {
-		// 					const date = new Date(isoString);
-
-		// 					const pad = (n) => n.toString().padStart(2, "0");
-		// 					const padMs = (n) => n.toString().padStart(3, "0");
-
-		// 					return (
-		// 						`${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
-		// 						`${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}.${padMs(date.getUTCMilliseconds())}`
-		// 					);
-		// 				};
-
-		// 				const requestData = await executeQuery(
-		// 					`SELECT * FROM solicitudes_ausencia
-		// 												WHERE id_solicitud = ${request_id}`,
-		// 					"Error fetching request data",
-		// 					dbs.tecmamovil,
-		// 				);
-
-		// 				console.warn("Request data is: ", requestData);
-
-		// 				if (
-		// 					!approverData[0].superior_id ||
-		// 					approverData[0].superior_id.trim === ""
-		// 				) {
-		// 					console.warn("\n\nUser doesn't have superior, approving...\n");
-		// 					await executeQuery(
-		// 						`UPDATE solicitudes_ausencia
-		// 									SET estado = 3,
-		// 										aprobado_por = '${numEmp}',
-		// 										fecha_aprobacion = GETDATE()
-		// 									WHERE id_solicitud = ${request_id}`,
-		// 						"Error approving request",
-		// 						dbs.tecmamovil,
-		// 					);
-
-		// 					// await executeQuery(`INSERT INTO VACAPLAN (CB_CODIGO, VP_FEC_INI, VP_FEC_FIN, VP_DIAS, VP_SOL_COM, VP_SOL_USR, VP_SOL_FEC)
-		// 					const insertQuery = `SET IDENTITY_INSERT VACAPLAN ON;
-		// 							INSERT INTO VACAPLAN (CB_CODIGO, VP_FEC_INI, VP_FEC_FIN, VP_DIAS, VP_SOL_COM, VP_SOL_USR, VP_SOL_FEC, VP_STATUS, VP_AUT_COM, VP_AUT_USR, VP_AUT_FEC, VP_NOMYEAR, VP_NOMTIPO, VP_NOMNUME, VP_SAL_ANT, VP_SAL_PRO, VP_PAGO_US, LLAVE)
-		// 							VALUES(
-		// 								${+requestData[0].id_empleado},
-		// 								'${formatISOToUTCDateTime(requestData[0].fecha_inicio)}',
-		// 								'${formatISOToUTCDateTime(requestData[0].fecha_fin)}',
-		// 								${requestData[0].dias_totales},
-		// 								'${requestData[0].comentario_empleado || ""}',
-		// 								624,
-		// 								GETDATE(),
-		// 								0,
-		// 								'',
-		// 								0,
-		// 								GETDATE(),
-		// 								0,
-		// 								0,
-		// 								0,
-		// 								0,
-		// 								0,
-		// 								1,
-		// 								1111
-		// 							)
-		// 							SET IDENTITY_INSERT VACAPLAN OFF;`;
-		// 					console.log("Query is: ", insertQuery);
-		// 					await executeQuery(
-		// 						insertQuery,
-		// 						"Error approving request",
-		// 						dbs.colabora,
-		// 					);
-
-		// 					return {
-		// 						success: true,
-		// 						message: "Se registró la solicitud correctamente.",
-		// 					};
-		// 				}
-
-		// 				if (
-		// 					requestData[0].pre_aprobado_por &&
-		// 					requestData[0].pre_aprobado_por.trim() !== ""
-		// 				) {
-		// 					console.warn("\n\nRequest has been pre-approved, approving...\n");
-		// 					await executeQuery(
-		// 						`UPDATE solicitudes_ausencia
-		// 						SET estado = 3,
-		// 						aprobado_por = '${numEmp}',
-		// 						fecha_aprobacion = GETDATE()
-		// 						WHERE id_solicitud = ${request_id}`,
-		// 						"Error registering request",
-		// 						dbs.tecmamovil,
-		// 					);
-
-		// 					await executeQuery(
-		// 						`INSERT INTO VACAPLAN
-		// 							VALUES(
-		// 								'${requestData[0].id_empleado}',
-		// 								${requestData[0].fecha_inicio},
-		// 								${requestData[0].fecha_fin},
-		// 								${requestData[0].dias_totales},
-		// 								${requestData[0].comentario_empleado || null},
-		// 								'Test Form',
-		// 								624,
-		// 								GETDATE(),
-		// 								0,
-		// 								'',
-		// 								0,
-		// 								GETDATE(),
-		// 								0,
-		// 								0,
-		// 								0,
-		// 								0,
-		// 								0,
-		// 								1,
-		// 								1111
-		// 							)`,
-		// 						"Error approving request",
-		// 						dbs.colabora,
-		// 					);
-		// 				} else {
-		// 					console.warn("\n\nRequest is pending, pre-approving...\n");
-		// 					await executeQuery(
-		// 						`UPDATE solicitudes_ausencia
-		// 										SET estado = 2,
-		// 											autoriza = '${approverData[0].superior_id}',
-		// 											pre_aprobado_por = '${numEmp}',
-		// 											fecha_pre_aprobacion = GETDATE()
-		// 										WHERE id_solicitud = ${request_id}`,
-		// 						"Error registering request",
-		// 						dbs.tecmamovil,
-		// 					);
-		// 				}
-
-		// 				return {
-		// 					success: true,
-		// 					message: "Se registró la solicitud correctamente.",
-		// 				};
-		// 			case "reject":
-		// 				return { success: false, message: "Reject" };
-		// 			case "cancel":
-		// 				return { success: false, message: "Cancel" };
-		// 			default:
-		// 				console.log("No action given, cancelling...");
-		// 				return { success: false, message: "No se definió una acción" };
-		// 		}
-		// 	} catch (error) {
-		// 		console.log("Error handling absence request: ", error);
-		// 		return {
-		// 			success: false,
-		// 			message: "Ocurrió un error al registrar la solicitud.",
-		// 		};
-		// 	}
-		// },
 		generateVacationCertificate: async (_, { input }) => {
 			const { numEmp, region, signature } = input;
 			// console.log("Input is: ", JSON.stringify(input, null, 1));
@@ -6449,7 +6226,7 @@ const resolvers = {
 		handleCheckIn: requireAuth(async (_, { input }, { user }) => {
 			console.log("Received check-in request: ", JSON.stringify(input, null, 1));
 
-			const CHECK_IN_MARGIN_METERS = 2;
+			const CHECK_IN_MARGIN_METERS = 18;
 
 			function expandBoxByMeters(box, marginMeters) {
 				const centerLatitude = (box.minLatitude + box.maxLatitude) / 2;
@@ -6554,6 +6331,7 @@ const resolvers = {
 				"900874",
 				"900683",
 				"900209",
+				"900951",
 			]);
 
 			function findMatchingCheckInArea({ latitude, longitude, areas }) {
