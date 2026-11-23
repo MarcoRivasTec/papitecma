@@ -647,6 +647,18 @@ const typeDefs = gql`
 		data: CheckInPendingPollData
 	}
 
+	type TOKAResponse {
+		success: Boolean!
+		message: String!
+		data: TOKAData
+	}
+
+	type TOKAData {
+		certificate: String
+		phone: String
+		chatbot: String
+	}
+
 
 
 
@@ -718,6 +730,8 @@ const typeDefs = gql`
 
 		CheckInZoneStatus(input: CheckInZoneStatusInput!): CheckInZoneStatusResponse!
 		CheckInPendingPollStatus: CheckInPendingPollResponse!
+
+		TOKA: TOKAResponse!
 	}
 
 	type Mutation {

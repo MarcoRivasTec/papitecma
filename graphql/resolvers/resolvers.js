@@ -349,39 +349,80 @@ const resolvers = {
 				dbs.colabora,
 			);
 
+			const FULL_RESTRICTION_BYPASS_EMP_IDS = new Set([
+				"900874",
+			]);
+
+			const CHECKIN_RESTRICTION_BYPASS_EMP_IDS = new Set([
+				"900683",
+				"900209",
+				"900951",
+				"900338",
+				"900368",
+				"900372",
+				"900428",
+				"900485",
+				"900617",
+				"900735",
+				"900748",
+				"900770",
+				"900783",
+				"900827",
+				"900869",
+				"900950",
+				"900809",
+
+				// Planta 24
+				"900691",
+				"900775",
+				"900440",
+
+				// Planta 4
+				"900802",
+				"900598",
+				"900473",
+				"106871",
+				"900361",
+			]);
+
+			const normalizedNumEmp = String(numEmp).trim();
+			const plantaId = userInfo[0]?.planta_id?.trim() ?? "";
+			const proyecto = userInfo[0]?.proyecto?.trim() ?? "";
+			const areaId = userInfo[0]?.area_id?.trim() ?? "";
+
 			let restrictedSections = [];
-			if (numEmp !== "900874"
-				&& numEmp !== "900338"
-				&& numEmp !== "900368"
-				&& numEmp !== "900372"
-				&& numEmp !== "900428"
-				&& numEmp !== "900485"
-				&& numEmp !== "900617"
-				&& numEmp !== "900735"
-				&& numEmp !== "900748"
-				&& numEmp !== "900770"
-				&& numEmp !== "900783"
-				&& numEmp !== "900827"
-				&& numEmp !== "900869"
-				&& numEmp !== "900950"
-				&& numEmp !== "900951"
-			) {
 
+			const bypassAllRestrictions =
+				FULL_RESTRICTION_BYPASS_EMP_IDS.has(normalizedNumEmp);
 
+			const bypassCheckInRestriction =
+				CHECKIN_RESTRICTION_BYPASS_EMP_IDS.has(normalizedNumEmp) ||
+				proyecto === "H90" ||
+				proyecto === "H91";
+
+			if (!bypassAllRestrictions) {
 				restrictedSections = await executeQuery(
 					`
-				SELECT DISTINCT s.section_name
-				FROM MenuAccessRestrictions AS mar
-				INNER JOIN Sections AS s ON mar.section_id = s.section_id
-				LEFT JOIN Regions AS r ON mar.region_id = r.region_id
-				WHERE 
-					mar.is_active = 1
-					AND (mar.employee_id IS NULL OR mar.employee_id = '${numEmp}')
-					AND (mar.region_id IS NULL OR r.region_code = '${region}')
-					AND (mar.plant IS NULL OR mar.plant = '${userInfo[0].planta_id.trim()}')
-					AND (mar.project IS NULL OR mar.project = '${userInfo[0].proyecto.trim()}')
-					AND (mar.area IS NULL OR mar.area = '${userInfo[0].area_id.trim()}')
-					AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE());`,
+					SELECT DISTINCT
+						s.section_name
+					FROM MenuAccessRestrictions AS mar
+					INNER JOIN Sections AS s
+						ON mar.section_id = s.section_id
+					LEFT JOIN Regions AS r
+						ON mar.region_id = r.region_id
+					WHERE
+						mar.is_active = 1
+						AND (mar.employee_id IS NULL OR mar.employee_id = '${normalizedNumEmp}')
+						AND (mar.region_id IS NULL OR r.region_code = '${region}')
+						AND (mar.plant IS NULL OR mar.plant = '${plantaId}')
+						AND (mar.project IS NULL OR mar.project = '${proyecto}')
+						AND (mar.area IS NULL OR mar.area = '${areaId}')
+						AND (mar.expires_at IS NULL OR mar.expires_at > GETDATE())
+						${bypassCheckInRestriction
+						? "AND mar.section_id <> 13"
+						: ""
+					};
+					`,
 					"Error fetching restricted sections for user",
 					"tecmamovilcentral",
 				);
@@ -624,7 +665,7 @@ const resolvers = {
 						CB_DER_PAG as GANADOS, 
 						CB_V_GOZO as TOMADOS,
 						CASE
-							WHEN CB_NIVEL0 IN ('H75') THEN
+							WHEN CB_NIVEL0 IN ('H75', 'H79', 'H81') THEN
 								CB_DER_PAG - CB_V_PAGO
 								+
 								(
@@ -3383,8 +3424,8 @@ const resolvers = {
 			},
 		),
 		CheckInZoneStatus: requireAuth(async (_, { input }, { user }) => {
-			console.log("CheckInZoneStatus called with input:", input);
-			const CHECK_IN_MARGIN_METERS = 18;
+			// console.log("CheckInZoneStatus called with input:", input);
+			const CHECK_IN_MARGIN_METERS = 15;
 			const MAX_LOCATION_ACCURACY_METERS = 75;
 
 			const GEO_BYPASS_EMP_IDS = new Set([
@@ -3393,6 +3434,468 @@ const resolvers = {
 				"900209",
 				"900951",
 			]);
+
+			const CHECK_IN_AREA_DEFINITIONS = [
+				// ============================================================
+				// EXISTING AREAS
+				// ============================================================
+
+				{
+					type: "BOX",
+					name: "Pasillo Aduanas",
+					cornerA: {
+						latitude: 31.6216944444,
+						longitude: -106.4482222222,
+					},
+					cornerB: {
+						latitude: 31.6217222222,
+						longitude: -106.4482222222,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Pasillo Recepcion",
+					cornerA: {
+						latitude: 31.6216944444,
+						longitude: -106.4482222222,
+					},
+					cornerB: {
+						latitude: 31.6216944444,
+						longitude: -106.4481666667,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Pasillo Cafeteria",
+					cornerA: {
+						latitude: 31.621418,
+						longitude: -106.448181,
+					},
+					cornerB: {
+						latitude: 31.621449,
+						longitude: -106.448125,
+					},
+				},
+
+				// ============================================================
+				// WEST PLANTS
+				// ============================================================
+
+				{
+					type: "POLYGON",
+					name: "Planta 3 NOA",
+					points: [
+						{ latitude: 31.62129, longitude: -106.44874 },
+						{ latitude: 31.62117, longitude: -106.44906 },
+						{ latitude: 31.62125, longitude: -106.44879 },
+						{ latitude: 31.62114, longitude: -106.44899 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 31",
+					center: {
+						latitude: 31.6121078,
+						longitude: -106.3951809,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 31-2",
+					center: {
+						latitude: 31.6121064,
+						longitude: -106.3943678,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 12",
+					cornerA: {
+						latitude: 31.6236667,
+						longitude: -106.3538611,
+					},
+					cornerB: {
+						latitude: 31.6236667,
+						longitude: -106.3537778,
+					},
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 21",
+					points: [
+						{ latitude: 31.60465, longitude: -106.40416 },
+						{ latitude: 31.60464, longitude: -106.40410 },
+						{ latitude: 31.60464, longitude: -106.40406 },
+						{ latitude: 31.60465, longitude: -106.40404 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 21-2",
+					points: [
+						{ latitude: 31.60507, longitude: -106.40421 },
+						{ latitude: 31.60505, longitude: -106.40424 },
+						{ latitude: 31.60502, longitude: -106.40423 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 24",
+					points: [
+						{ latitude: 31.62074, longitude: -106.4464 },
+						{ latitude: 31.62074, longitude: -106.44642 },
+						{ latitude: 31.62073, longitude: -106.44645 },
+						{ latitude: 31.62078, longitude: -106.44648 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 30",
+					cornerA: {
+						latitude: 31.60629,
+						longitude: -106.40256,
+					},
+					cornerB: {
+						latitude: 31.60628,
+						longitude: -106.40253,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 32",
+					cornerA: {
+						latitude: 31.60339,
+						longitude: -106.39155,
+					},
+					cornerB: {
+						latitude: 31.60348,
+						longitude: -106.39149,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 33",
+					cornerA: {
+						latitude: 31.60880,
+						longitude: -106.40774,
+					},
+					cornerB: {
+						latitude: 31.60876,
+						longitude: -106.40769,
+					},
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 36 EM",
+					center: {
+						latitude: 31.6087,
+						longitude: -106.42233,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL",
+					points: [
+						{ latitude: 31.60667, longitude: -106.42183 },
+						{ latitude: 31.60667, longitude: -106.42182 },
+						{ latitude: 31.60667, longitude: -106.42182 },
+						{ latitude: 31.60666, longitude: -106.42182 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL 2",
+					points: [
+						{ latitude: 31.60685, longitude: -106.42264 },
+						{ latitude: 31.60666, longitude: -106.42193 },
+						{ latitude: 31.60673, longitude: -106.4224 },
+						{ latitude: 31.60672, longitude: -106.42286 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL 3",
+					points: [
+						{ latitude: 31.60666, longitude: -106.42193 },
+						{ latitude: 31.60666, longitude: -106.42188 },
+						{ latitude: 31.60667, longitude: -106.42183 },
+						{ latitude: 31.60667, longitude: -106.42182 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL 4",
+					points: [
+						{ latitude: 31.60662, longitude: -106.42145 },
+						{ latitude: 31.6066, longitude: -106.42143 },
+						{ latitude: 31.60657, longitude: -106.42137 },
+						{ latitude: 31.60662, longitude: -106.42149 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 38",
+					cornerA: {
+						latitude: 31.62389,
+						longitude: -106.36729,
+					},
+					cornerB: {
+						latitude: 31.62381,
+						longitude: -106.36733,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 39",
+					cornerA: {
+						latitude: 31.60565,
+						longitude: -106.42590,
+					},
+					cornerB: {
+						latitude: 31.60564,
+						longitude: -106.42616,
+					},
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 4",
+					center: {
+						latitude: 31.66754,
+						longitude: -106.39389,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 40",
+					cornerA: {
+						latitude: 31.60196,
+						longitude: -106.39274,
+					},
+					cornerB: {
+						latitude: 31.60197,
+						longitude: -106.39282,
+					},
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 44",
+					points: [
+						{ latitude: 31.73332, longitude: -106.41761 },
+						{ latitude: 31.73341, longitude: -106.41766 },
+						{ latitude: 31.73333, longitude: -106.41766 },
+						{ latitude: 31.73347, longitude: -106.41758 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 44-2",
+					points: [
+						{ latitude: 31.73317, longitude: -106.41755 },
+						{ latitude: 31.73331, longitude: -106.41772 },
+						{ latitude: 31.73367, longitude: -106.41804 },
+						{ latitude: 31.73363, longitude: -106.41799 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 46",
+					points: [
+						{ latitude: 31.72349, longitude: -106.39400 },
+						{ latitude: 31.72346, longitude: -106.39400 },
+						{ latitude: 31.72350, longitude: -106.39393 },
+						{ latitude: 31.72353, longitude: -106.39400 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 48",
+					center: {
+						latitude: 31.68115,
+						longitude: -106.44289,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 49",
+					points: [
+						{ latitude: 31.67702, longitude: -106.44489 },
+						{ latitude: 31.67704, longitude: -106.44483 },
+						{ latitude: 31.67706, longitude: -106.44483 },
+						{ latitude: 31.67703, longitude: -106.44479 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 50",
+					cornerA: {
+						latitude: 31.60333,
+						longitude: -106.38498,
+					},
+					cornerB: {
+						latitude: 31.60328,
+						longitude: -106.38511,
+					},
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 27",
+					center: {
+						latitude: 31.691992,
+						longitude: -106.442976,
+					},
+					radiusMeters: 10,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 43",
+					points: [
+						{ latitude: 31.5986, longitude: -106.37898 },
+						{ latitude: 31.5986, longitude: -106.37917 },
+						{ latitude: 31.59862, longitude: -106.37925 },
+						{ latitude: 31.59864, longitude: -106.37941 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 2",
+					points: [
+						{ latitude: 31.60782, longitude: -106.41662 },
+						{ latitude: 31.60795, longitude: -106.41646 },
+						{ latitude: 31.60801, longitude: -106.41643 },
+						{ latitude: 31.60786, longitude: -106.41661 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 14",
+					center: {
+						latitude: 31.70045,
+						longitude: -106.43174,
+					},
+					radiusMeters: 3,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 41 MULTI",
+					points: [
+						{ latitude: 31.6098, longitude: -106.4452 },
+						{ latitude: 31.60983, longitude: -106.4452 },
+						{ latitude: 31.60971, longitude: -106.44533 },
+						{ latitude: 31.60966, longitude: -106.44536 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 47",
+					points: [
+						{ latitude: 31.72098, longitude: -106.397818 },
+						{ latitude: 31.720869, longitude: -106.397776 },
+						{ latitude: 31.720923, longitude: -106.397809 },
+						{ latitude: 31.720923, longitude: -106.397809 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 42",
+					points: [
+						{ latitude: 31.60023, longitude: -106.3764 },
+						{ latitude: 31.60023, longitude: -106.37645 },
+						{ latitude: 31.60027, longitude: -106.37651 },
+						{ latitude: 31.6002, longitude: -106.37647 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 42-2",
+					points: [
+						{ latitude: 31.60024, longitude: -106.37646 },
+						{ latitude: 31.60023, longitude: -106.37646 },
+						{ latitude: 31.60024, longitude: -106.37651 },
+						{ latitude: 31.60023, longitude: -106.37651 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 41 NASCO",
+					points: [
+						{ latitude: 31.6086, longitude: -106.44422 },
+						{ latitude: 31.60867, longitude: -106.44419 },
+						{ latitude: 31.6087, longitude: -106.44418 },
+						{ latitude: 31.60868, longitude: -106.44421 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 41 NASCO -2",
+					points: [
+						{ latitude: 31.60868, longitude: -106.44421 },
+						{ latitude: 31.6087, longitude: -106.44418 },
+						{ latitude: 31.60867, longitude: -106.44419 },
+						{ latitude: 31.60858, longitude: -106.44422 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+			];
 
 			function expandBoxByMeters(box, marginMeters) {
 				const centerLatitude = (box.minLatitude + box.maxLatitude) / 2;
@@ -3410,49 +3913,288 @@ const resolvers = {
 				};
 			}
 
-			const CHECK_IN_AREAS = [
-				{
-					name: "Pasillo Aduanas",
-					cornerA: {
-						latitude: 31.6216944444,
-						longitude: -106.4482222222,
+			function isPointInsidePolygon({
+				latitude,
+				longitude,
+				points,
+			}) {
+				if (
+					!Array.isArray(points) ||
+					points.length < 3
+				) {
+					return false;
+				}
+
+				let inside = false;
+
+				for (
+					let i = 0, j = points.length - 1;
+					i < points.length;
+					j = i++
+				) {
+					const current = points[i];
+					const previous = points[j];
+
+					const intersects =
+						(
+							current.latitude > latitude
+						) !== (
+							previous.latitude > latitude
+						) &&
+						longitude <
+						(
+							(
+								previous.longitude -
+								current.longitude
+							) *
+							(
+								latitude -
+								current.latitude
+							)
+						) /
+						(
+							previous.latitude -
+							current.latitude
+						) +
+						current.longitude;
+
+					if (intersects) {
+						inside = !inside;
+					}
+				}
+
+				return inside;
+			}
+
+			function distancePointToSegmentMeters(
+				point,
+				segmentStart,
+				segmentEnd,
+			) {
+				const metersPerDegreeLat = 111320;
+
+				const metersPerDegreeLon =
+					111320 *
+					Math.cos(
+						(point.latitude * Math.PI) / 180
+					);
+
+				const startX =
+					(
+						segmentStart.longitude -
+						point.longitude
+					) * metersPerDegreeLon;
+
+				const startY =
+					(
+						segmentStart.latitude -
+						point.latitude
+					) * metersPerDegreeLat;
+
+				const endX =
+					(
+						segmentEnd.longitude -
+						point.longitude
+					) * metersPerDegreeLon;
+
+				const endY =
+					(
+						segmentEnd.latitude -
+						point.latitude
+					) * metersPerDegreeLat;
+
+				const dx = endX - startX;
+				const dy = endY - startY;
+
+				const lengthSquared =
+					dx * dx + dy * dy;
+
+				if (lengthSquared === 0) {
+					return Math.hypot(
+						startX,
+						startY,
+					);
+				}
+
+				const t = Math.max(
+					0,
+					Math.min(
+						1,
+						-(
+							startX * dx +
+							startY * dy
+						) / lengthSquared,
+					),
+				);
+
+				const closestX =
+					startX + t * dx;
+
+				const closestY =
+					startY + t * dy;
+
+				return Math.hypot(
+					closestX,
+					closestY,
+				);
+			}
+
+			function distanceBetweenCoordinatesMeters(
+				latitude1,
+				longitude1,
+				latitude2,
+				longitude2,
+			) {
+				const EARTH_RADIUS_METERS = 6371000;
+
+				const toRadians = (degrees) =>
+					(degrees * Math.PI) / 180;
+
+				const lat1 = toRadians(latitude1);
+				const lat2 = toRadians(latitude2);
+
+				const deltaLatitude =
+					toRadians(latitude2 - latitude1);
+
+				const deltaLongitude =
+					toRadians(longitude2 - longitude1);
+
+				const a =
+					Math.sin(deltaLatitude / 2) ** 2 +
+					Math.cos(lat1) *
+					Math.cos(lat2) *
+					Math.sin(deltaLongitude / 2) ** 2;
+
+				const c =
+					2 *
+					Math.atan2(
+						Math.sqrt(a),
+						Math.sqrt(1 - a),
+					);
+
+				return EARTH_RADIUS_METERS * c;
+			}
+
+			function isInsideRadiusRange({
+				latitude,
+				longitude,
+				area,
+			}) {
+				const distanceMeters =
+					distanceBetweenCoordinatesMeters(
+						latitude,
+						longitude,
+						area.center.latitude,
+						area.center.longitude,
+					);
+
+				return distanceMeters <= area.radiusMeters;
+			}
+
+			function isInsidePolygonRange({
+				latitude,
+				longitude,
+				polygon,
+			}) {
+				/*
+				 * Exact polygon first.
+				 */
+				if (
+					isPointInsidePolygon({
+						latitude,
+						longitude,
+						points: polygon.points,
+					})
+				) {
+					return true;
+				}
+
+				/*
+				 * Then allow the same GPS margin
+				 * used by the old boxes.
+				 */
+				const marginMeters =
+					polygon.marginMeters ?? 0;
+
+				if (marginMeters <= 0) {
+					return false;
+				}
+
+				const point = {
+					latitude,
+					longitude,
+				};
+
+				for (
+					let i = 0;
+					i < polygon.points.length;
+					i++
+				) {
+					const start =
+						polygon.points[i];
+
+					const end =
+						polygon.points[
+						(i + 1) %
+						polygon.points.length
+						];
+
+					const distance =
+						distancePointToSegmentMeters(
+							point,
+							start,
+							end,
+						);
+
+					if (distance <= marginMeters) {
+						return true;
+					}
+				}
+
+				return false;
+			}
+
+			const CHECK_IN_AREAS =
+				CHECK_IN_AREA_DEFINITIONS.map(
+					(area) => {
+						if (
+							area.type === "POLYGON" ||
+							area.type === "RADIUS"
+						) {
+							return area;
+						}
+
+						const box = {
+							type: "BOX",
+							name: area.name,
+
+							minLatitude: Math.min(
+								area.cornerA.latitude,
+								area.cornerB.latitude,
+							),
+
+							maxLatitude: Math.max(
+								area.cornerA.latitude,
+								area.cornerB.latitude,
+							),
+
+							minLongitude: Math.min(
+								area.cornerA.longitude,
+								area.cornerB.longitude,
+							),
+
+							maxLongitude: Math.max(
+								area.cornerA.longitude,
+								area.cornerB.longitude,
+							),
+						};
+
+						return expandBoxByMeters(
+							box,
+							CHECK_IN_MARGIN_METERS,
+						);
 					},
-					cornerB: {
-						latitude: 31.6217222222,
-						longitude: -106.4482222222,
-					},
-				},
-				{
-					name: "Pasillo Recepcion",
-					cornerA: {
-						latitude: 31.6216944444,
-						longitude: -106.4482222222,
-					},
-					cornerB: {
-						latitude: 31.6216944444,
-						longitude: -106.4481666667,
-					},
-				},
-				{
-					name: "Pasillo Cafeteria",
-					cornerA: {
-						latitude: 31.621418,
-						longitude: -106.448181,
-					},
-					cornerB: {
-						latitude: 31.621449,
-						longitude: -106.448125,
-					},
-				},
-			]
-				.map((area) => ({
-					name: area.name,
-					minLatitude: Math.min(area.cornerA.latitude, area.cornerB.latitude),
-					maxLatitude: Math.max(area.cornerA.latitude, area.cornerB.latitude),
-					minLongitude: Math.min(area.cornerA.longitude, area.cornerB.longitude),
-					maxLongitude: Math.max(area.cornerA.longitude, area.cornerB.longitude),
-				}))
-				.map((area) => expandBoxByMeters(area, CHECK_IN_MARGIN_METERS));
+				);
 
 			function isValidNumber(value) {
 				return typeof value === "number" && Number.isFinite(value);
@@ -3467,14 +4209,38 @@ const resolvers = {
 				);
 			}
 
-			function findMatchingCheckInArea({ latitude, longitude, areas }) {
-				return areas.find((area) =>
-					isInsideBoxRange({
-						latitude,
-						longitude,
-						box: area,
-					}),
-				);
+			function findMatchingCheckInArea({
+				latitude,
+				longitude,
+				areas,
+			}) {
+				return areas.find((area) => {
+					switch (area.type) {
+						case "POLYGON":
+							return isInsidePolygonRange({
+								latitude,
+								longitude,
+								polygon: area,
+							});
+
+						case "RADIUS":
+							return isInsideRadiusRange({
+								latitude,
+								longitude,
+								area,
+							});
+
+						case "BOX":
+							return isInsideBoxRange({
+								latitude,
+								longitude,
+								box: area,
+							});
+
+						default:
+							return false;
+					}
+				});
 			}
 
 			function normalizeCheckInLocationInput(input) {
@@ -3799,6 +4565,66 @@ const resolvers = {
 				};
 			}
 		}),
+		TOKA: requireAuth(async (_, __, { user }) => {
+			try {
+				if (!user) throw new Error("Unauthorized");
+
+				const { empId, region } = user;
+
+				const chatbot = '+525541250320'
+				const phone = '+525510001000'
+
+				if (!empId) {
+					return {
+						success: false,
+						message: "No se pudo identificar al empleado desde el token.",
+						data: null,
+					};
+				}
+
+				if (!region) {
+					return {
+						success: false,
+						message: "No se pudo identificar la región desde el token.",
+						data: null,
+					};
+				}
+
+				const dbs = await selectRegion(region);
+
+				const result = await executeParameterizedQuery(
+					`
+					SELECT CB_G_TEX_1 as toka_cuidarte
+					FROM COLABORA C
+					WHERE C.CB_CODIGO = @param1
+					`,
+					[empId],
+					"Error fetching today's check-ins",
+					dbs.colabora,
+				);
+
+				const tokaCuidarte = result?.[0]?.toka_cuidarte ?? null;
+
+				return {
+					success: true,
+					message: "Información de TOKA obtenida correctamente.",
+					data: {
+						certificate: tokaCuidarte,
+						phone,
+						chatbot,
+					},
+				};
+			} catch (err) {
+				console.error("TOKA error:", err);
+
+				return {
+					success: false,
+					message: "Error al obtener la información de TOKA.",
+					data: null,
+				};
+			}
+		}),
+
 	},
 	Mutation: {
 		login: async (_, { numEmp, nip, region }) => {
@@ -3832,113 +4658,7 @@ const resolvers = {
 				}
 			}
 
-			const inactiveEmployees = new Set([
-				"26931",
-				"35485",
-				"26837",
-				"31689",
-				"41900",
-				"26831",
-				"27200",
-				"33457",
-				"33544",
-				"33841",
-				"34019",
-				"41922",
-				"14884",
-				"35620",
-				"40361",
-				"40394",
-				"23815",
-				"28916",
-				"42104",
-				"41045",
-				"42099",
-
-				"2580",
-				"32254",
-				"33712",
-				"38942",
-				"39986",
-				"40665",
-				"41142",
-				"41159",
-				"41509",
-				"41733",
-				"41746",
-				"41799",
-				"42337",
-				"42351",
-				"42452",
-				"42436",
-				"42680",
-				"42697",
-				"43379",
-				"43695",
-				"43744",
-				"43881",
-
-				"42737",
-				"42115",
-				"43660",
-				"43669",
-
-				"16108",
-				"43549",
-				"43748",
-				"43868",
-				"43930",
-
-				"27529",
-				"43775",
-
-				"30903",
-				"32739",
-				"34993",
-				"35181",
-				"37186",
-				"37839",
-				"38380",
-
-				"22102",
-				"36260",
-
-				"42359",
-				"42710",
-				"42616",
-				"4302",
-				"42360",
-				"42398",
-				"43882",
-				"43743",
-				"40447",
-				"38724",
-				"9320",
-				"43662",
-				"41682",
-				"42202",
-				"41554",
-				"42682",
-				"38909",
-				"35517",
-				"40651",
-				"37818",
-				"43378",
-				"43870",
-				"37406",
-				"41687",
-				"43083",
-				"43604",
-				"40352",
-				"42852",
-				"43745",
-				"41794",
-				"42364",
-				"42803",
-				"43791",
-				"42358",
-				"2145"
-			]);
+			const inactiveEmployees = new Set([]);
 
 			const normalizedNumEmp = String(numEmp).trim();
 			const normalizedRegion = String(region || "")
@@ -6226,7 +6946,556 @@ const resolvers = {
 		handleCheckIn: requireAuth(async (_, { input }, { user }) => {
 			console.log("Received check-in request: ", JSON.stringify(input, null, 1));
 
-			const CHECK_IN_MARGIN_METERS = 18;
+			const CHECK_IN_MARGIN_METERS = 5;
+
+			// const CHECK_IN_AREA_DEFINITIONS = [
+			// 	{
+			// 		type: "BOX",
+			// 		name: "Pasillo Aduanas",
+
+			// 		cornerA: {
+			// 			latitude: 31.6216944444,
+			// 			longitude: -106.4482222222,
+			// 		},
+
+			// 		cornerB: {
+			// 			latitude: 31.6217222222,
+			// 			longitude: -106.4482222222,
+			// 		},
+			// 	},
+
+			// 	{
+			// 		type: "BOX",
+			// 		name: "Pasillo Recepcion",
+
+			// 		cornerA: {
+			// 			latitude: 31.6216944444,
+			// 			longitude: -106.4482222222,
+			// 		},
+
+			// 		cornerB: {
+			// 			latitude: 31.6216944444,
+			// 			longitude: -106.4481666667,
+			// 		},
+			// 	},
+
+			// 	{
+			// 		type: "BOX",
+			// 		name: "Pasillo Cafeteria",
+
+			// 		cornerA: {
+			// 			latitude: 31.621539,
+			// 			longitude: -106.448143,
+			// 		},
+
+			// 		cornerB: {
+			// 			latitude: 31.621532,
+			// 			longitude: -106.448161,
+			// 		},
+			// 	},
+
+			// 	/*
+			// 	 * Planta 24
+			// 	 *
+			// 	 * Four-point polygon.
+			// 	 * Points should be declared around the
+			// 	 * perimeter in order.
+			// 	 */
+			// 	{
+			// 		type: "POLYGON",
+			// 		name: "Planta 24",
+
+			// 		points: [
+			// 			{
+			// 				latitude: 31.62074,
+			// 				longitude: -106.4464,
+			// 			},
+			// 			{
+			// 				latitude: 31.62074,
+			// 				longitude: -106.44642,
+			// 			},
+			// 			{
+			// 				latitude: 31.62073,
+			// 				longitude: -106.44645,
+			// 			},
+			// 			{
+			// 				latitude: 31.62078,
+			// 				longitude: -106.44648,
+			// 			},
+			// 		],
+
+			// 		/*
+			// 		 * Keep the same tolerance as the
+			// 		 * existing check-in areas.
+			// 		 */
+			// 		marginMeters: CHECK_IN_MARGIN_METERS,
+			// 	},
+			// ];
+
+			const CHECK_IN_AREA_DEFINITIONS = [
+				// ============================================================
+				// EXISTING AREAS
+				// ============================================================
+
+				{
+					type: "BOX",
+					name: "Pasillo Aduanas",
+					cornerA: {
+						latitude: 31.6216944444,
+						longitude: -106.4482222222,
+					},
+					cornerB: {
+						latitude: 31.6217222222,
+						longitude: -106.4482222222,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Pasillo Recepcion",
+					cornerA: {
+						latitude: 31.6216944444,
+						longitude: -106.4482222222,
+					},
+					cornerB: {
+						latitude: 31.6216944444,
+						longitude: -106.4481666667,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Pasillo Cafeteria",
+					cornerA: {
+						latitude: 31.621539,
+						longitude: -106.448143,
+					},
+					cornerB: {
+						latitude: 31.621532,
+						longitude: -106.448161,
+					},
+				},
+
+				// ============================================================
+				// WEST PLANTS
+				// ============================================================
+
+				{
+					type: "POLYGON",
+					name: "Planta 3 NOA",
+					points: [
+						{ latitude: 31.62129, longitude: -106.44874 },
+						{ latitude: 31.62117, longitude: -106.44906 },
+						{ latitude: 31.62125, longitude: -106.44879 },
+						{ latitude: 31.62114, longitude: -106.44899 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 31",
+					center: {
+						latitude: 31.6121078,
+						longitude: -106.3951809,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 31-2",
+					center: {
+						latitude: 31.6121064,
+						longitude: -106.3943678,
+					},
+					radiusMeters: 5,
+				},
+
+				// Original coordinates:
+				// 31°37'25.2"N
+				// 106°21'13.9"W / 106°21'13.6"W
+				{
+					type: "BOX",
+					name: "Planta 12",
+					cornerA: {
+						latitude: 31.6236667,
+						longitude: -106.3538611,
+					},
+					cornerB: {
+						latitude: 31.6236667,
+						longitude: -106.3537778,
+					},
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 21",
+					points: [
+						{ latitude: 31.60465, longitude: -106.40416 },
+						{ latitude: 31.60464, longitude: -106.40410 },
+						{ latitude: 31.60464, longitude: -106.40406 },
+						{ latitude: 31.60465, longitude: -106.40404 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 21-2",
+					points: [
+						{ latitude: 31.60507, longitude: -106.40421 },
+						{ latitude: 31.60505, longitude: -106.40424 },
+						{ latitude: 31.60502, longitude: -106.40423 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 24",
+					points: [
+						{ latitude: 31.62074, longitude: -106.4464 },
+						{ latitude: 31.62074, longitude: -106.44642 },
+						{ latitude: 31.62073, longitude: -106.44645 },
+						{ latitude: 31.62078, longitude: -106.44648 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 30",
+					cornerA: {
+						latitude: 31.60629,
+						longitude: -106.40256,
+					},
+					cornerB: {
+						latitude: 31.60628,
+						longitude: -106.40253,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 32",
+					cornerA: {
+						latitude: 31.60339,
+						longitude: -106.39155,
+					},
+					cornerB: {
+						latitude: 31.60348,
+						longitude: -106.39149,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 33",
+					cornerA: {
+						latitude: 31.60880,
+						longitude: -106.40774,
+					},
+					cornerB: {
+						latitude: 31.60876,
+						longitude: -106.40769,
+					},
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 36 EM",
+					center: {
+						latitude: 31.6087,
+						longitude: -106.42233,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL",
+					points: [
+						{ latitude: 31.60667, longitude: -106.42183 },
+						{ latitude: 31.60667, longitude: -106.42182 },
+						{ latitude: 31.60667, longitude: -106.42182 },
+						{ latitude: 31.60666, longitude: -106.42182 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL 2",
+					points: [
+						{ latitude: 31.60685, longitude: -106.42264 },
+						{ latitude: 31.60666, longitude: -106.42193 },
+						{ latitude: 31.60673, longitude: -106.4224 },
+						{ latitude: 31.60672, longitude: -106.42286 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL 3",
+					points: [
+						{ latitude: 31.60666, longitude: -106.42193 },
+						{ latitude: 31.60666, longitude: -106.42188 },
+						{ latitude: 31.60667, longitude: -106.42183 },
+						{ latitude: 31.60667, longitude: -106.42182 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 36 THERMAL 4",
+					points: [
+						{ latitude: 31.60662, longitude: -106.42145 },
+						{ latitude: 31.6066, longitude: -106.42143 },
+						{ latitude: 31.60657, longitude: -106.42137 },
+						{ latitude: 31.60662, longitude: -106.42149 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 38",
+					cornerA: {
+						latitude: 31.62389,
+						longitude: -106.36729,
+					},
+					cornerB: {
+						latitude: 31.62381,
+						longitude: -106.36733,
+					},
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 39",
+					cornerA: {
+						latitude: 31.60565,
+						longitude: -106.42590,
+					},
+					cornerB: {
+						latitude: 31.60564,
+						longitude: -106.42616,
+					},
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 4",
+					center: {
+						latitude: 31.66754,
+						longitude: -106.39389,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 40",
+					cornerA: {
+						latitude: 31.60196,
+						longitude: -106.39274,
+					},
+					cornerB: {
+						latitude: 31.60197,
+						longitude: -106.39282,
+					},
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 44",
+					points: [
+						{ latitude: 31.73332, longitude: -106.41761 },
+						{ latitude: 31.73341, longitude: -106.41766 },
+						{ latitude: 31.73333, longitude: -106.41766 },
+						{ latitude: 31.73347, longitude: -106.41758 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 44-2",
+					points: [
+						{ latitude: 31.73317, longitude: -106.41755 },
+						{ latitude: 31.73331, longitude: -106.41772 },
+						{ latitude: 31.73367, longitude: -106.41804 },
+						{ latitude: 31.73363, longitude: -106.41799 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 46",
+					points: [
+						{ latitude: 31.72349, longitude: -106.39400 },
+						{ latitude: 31.72346, longitude: -106.39400 },
+						{ latitude: 31.72350, longitude: -106.39393 },
+						{ latitude: 31.72353, longitude: -106.39400 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 48",
+					center: {
+						latitude: 31.68115,
+						longitude: -106.44289,
+					},
+					radiusMeters: 5,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 49",
+					points: [
+						{ latitude: 31.67702, longitude: -106.44489 },
+						{ latitude: 31.67704, longitude: -106.44483 },
+						{ latitude: 31.67706, longitude: -106.44483 },
+						{ latitude: 31.67703, longitude: -106.44479 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "BOX",
+					name: "Planta 50",
+					cornerA: {
+						latitude: 31.60333,
+						longitude: -106.38498,
+					},
+					cornerB: {
+						latitude: 31.60328,
+						longitude: -106.38511,
+					},
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 27",
+					center: {
+						latitude: 31.691992,
+						longitude: -106.442976,
+					},
+					radiusMeters: 10,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 43",
+					points: [
+						{ latitude: 31.5986, longitude: -106.37898 },
+						{ latitude: 31.5986, longitude: -106.37917 },
+						{ latitude: 31.59862, longitude: -106.37925 },
+						{ latitude: 31.59864, longitude: -106.37941 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 2",
+					points: [
+						{ latitude: 31.60782, longitude: -106.41662 },
+						{ latitude: 31.60795, longitude: -106.41646 },
+						{ latitude: 31.60801, longitude: -106.41643 },
+						{ latitude: 31.60786, longitude: -106.41661 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "RADIUS",
+					name: "Planta 14",
+					center: {
+						latitude: 31.70045,
+						longitude: -106.43174,
+					},
+					radiusMeters: 3,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 41 MULTI",
+					points: [
+						{ latitude: 31.6098, longitude: -106.4452 },
+						{ latitude: 31.60983, longitude: -106.4452 },
+						{ latitude: 31.60971, longitude: -106.44533 },
+						{ latitude: 31.60966, longitude: -106.44536 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 47",
+					points: [
+						{ latitude: 31.72098, longitude: -106.397818 },
+						{ latitude: 31.720869, longitude: -106.397776 },
+						{ latitude: 31.720923, longitude: -106.397809 },
+						{ latitude: 31.720923, longitude: -106.397809 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 42",
+					points: [
+						{ latitude: 31.60023, longitude: -106.3764 },
+						{ latitude: 31.60023, longitude: -106.37645 },
+						{ latitude: 31.60027, longitude: -106.37651 },
+						{ latitude: 31.6002, longitude: -106.37647 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 42-2",
+					points: [
+						{ latitude: 31.60024, longitude: -106.37646 },
+						{ latitude: 31.60023, longitude: -106.37646 },
+						{ latitude: 31.60024, longitude: -106.37651 },
+						{ latitude: 31.60023, longitude: -106.37651 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 41 NASCO",
+					points: [
+						{ latitude: 31.6086, longitude: -106.44422 },
+						{ latitude: 31.60867, longitude: -106.44419 },
+						{ latitude: 31.6087, longitude: -106.44418 },
+						{ latitude: 31.60868, longitude: -106.44421 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+
+				{
+					type: "POLYGON",
+					name: "Planta 41 NASCO -2",
+					points: [
+						{ latitude: 31.60868, longitude: -106.44421 },
+						{ latitude: 31.6087, longitude: -106.44418 },
+						{ latitude: 31.60867, longitude: -106.44419 },
+						{ latitude: 31.60858, longitude: -106.44422 },
+					],
+					marginMeters: CHECK_IN_MARGIN_METERS,
+				},
+			];
 
 			function expandBoxByMeters(box, marginMeters) {
 				const centerLatitude = (box.minLatitude + box.maxLatitude) / 2;
@@ -6242,6 +7511,238 @@ const resolvers = {
 					minLongitude: box.minLongitude - lonDelta,
 					maxLongitude: box.maxLongitude + lonDelta,
 				};
+			}
+
+			function isPointInsidePolygon({
+				latitude,
+				longitude,
+				points,
+			}) {
+				if (!Array.isArray(points) || points.length < 3) {
+					return false;
+				}
+
+				let inside = false;
+
+				for (
+					let i = 0, j = points.length - 1;
+					i < points.length;
+					j = i++
+				) {
+					const current = points[i];
+					const previous = points[j];
+
+					const intersects =
+						(
+							current.latitude > latitude
+						) !== (
+							previous.latitude > latitude
+						) &&
+						longitude <
+						(
+							(
+								previous.longitude -
+								current.longitude
+							) *
+							(
+								latitude -
+								current.latitude
+							)
+						) /
+						(
+							previous.latitude -
+							current.latitude
+						) +
+						current.longitude;
+
+					if (intersects) {
+						inside = !inside;
+					}
+				}
+
+				return inside;
+			}
+
+			function distancePointToSegmentMeters(
+				point,
+				segmentStart,
+				segmentEnd,
+			) {
+				const metersPerDegreeLat = 111320;
+
+				const metersPerDegreeLon =
+					111320 *
+					Math.cos(
+						(point.latitude * Math.PI) / 180
+					);
+
+				/*
+				 * Convert coordinates to local meters,
+				 * using the check-in point as 0,0.
+				 */
+				const startX =
+					(segmentStart.longitude - point.longitude) *
+					metersPerDegreeLon;
+
+				const startY =
+					(segmentStart.latitude - point.latitude) *
+					metersPerDegreeLat;
+
+				const endX =
+					(segmentEnd.longitude - point.longitude) *
+					metersPerDegreeLon;
+
+				const endY =
+					(segmentEnd.latitude - point.latitude) *
+					metersPerDegreeLat;
+
+				const dx = endX - startX;
+				const dy = endY - startY;
+
+				const lengthSquared =
+					dx * dx + dy * dy;
+
+				if (lengthSquared === 0) {
+					return Math.hypot(startX, startY);
+				}
+
+				/*
+				 * Since the check-in point is 0,0,
+				 * project it onto the segment.
+				 */
+				const t = Math.max(
+					0,
+					Math.min(
+						1,
+						-(
+							startX * dx +
+							startY * dy
+						) / lengthSquared,
+					),
+				);
+
+				const closestX = startX + t * dx;
+				const closestY = startY + t * dy;
+
+				return Math.hypot(
+					closestX,
+					closestY,
+				);
+			}
+
+			function distanceBetweenCoordinatesMeters(
+				latitude1,
+				longitude1,
+				latitude2,
+				longitude2,
+			) {
+				const EARTH_RADIUS_METERS = 6371000;
+
+				const toRadians = (degrees) =>
+					(degrees * Math.PI) / 180;
+
+				const lat1 = toRadians(latitude1);
+				const lat2 = toRadians(latitude2);
+
+				const deltaLatitude =
+					toRadians(latitude2 - latitude1);
+
+				const deltaLongitude =
+					toRadians(longitude2 - longitude1);
+
+				const a =
+					Math.sin(deltaLatitude / 2) ** 2 +
+					Math.cos(lat1) *
+					Math.cos(lat2) *
+					Math.sin(deltaLongitude / 2) ** 2;
+
+				const c =
+					2 *
+					Math.atan2(
+						Math.sqrt(a),
+						Math.sqrt(1 - a),
+					);
+
+				return EARTH_RADIUS_METERS * c;
+			}
+
+			function isInsideRadiusRange({
+				latitude,
+				longitude,
+				area,
+			}) {
+				const distanceMeters =
+					distanceBetweenCoordinatesMeters(
+						latitude,
+						longitude,
+						area.center.latitude,
+						area.center.longitude,
+					);
+
+				return distanceMeters <= area.radiusMeters;
+			}
+
+			function isInsidePolygonRange({
+				latitude,
+				longitude,
+				polygon,
+			}) {
+				/*
+				 * First: exact polygon.
+				 */
+				if (
+					isPointInsidePolygon({
+						latitude,
+						longitude,
+						points: polygon.points,
+					})
+				) {
+					return true;
+				}
+
+				/*
+				 * Then apply the same GPS tolerance used
+				 * by the old areas.
+				 */
+				const marginMeters =
+					polygon.marginMeters ?? 0;
+
+				if (marginMeters <= 0) {
+					return false;
+				}
+
+				const point = {
+					latitude,
+					longitude,
+				};
+
+				for (
+					let i = 0;
+					i < polygon.points.length;
+					i++
+				) {
+					const start =
+						polygon.points[i];
+
+					const end =
+						polygon.points[
+						(i + 1) %
+						polygon.points.length
+						];
+
+					const distance =
+						distancePointToSegmentMeters(
+							point,
+							start,
+							end,
+						);
+
+					if (distance <= marginMeters) {
+						return true;
+					}
+				}
+
+				return false;
 			}
 
 			async function getPendingPollStatus({ empId, dbs }) {
@@ -6264,68 +7765,47 @@ const resolvers = {
 				};
 			}
 
-			const CHECK_IN_AREAS = [
-				{
-					name: "Pasillo Aduanas",
-					cornerA: {
-						latitude: 31.6216944444, 	// 31°37'18.1"N
-						longitude: -106.4482222222, // 106°26'53.6"W
-					},
-					cornerB: {
-						latitude: 31.6217222222, 	// 31°37'18.2"N
-						longitude: -106.4482222222, // 106°26'53.6"W
-					},
-				},
-				{
-					name: "Pasillo Recepcion",
-					cornerA: {
-						latitude: 31.6216944444,
-						longitude: -106.4482222222,
-					},
-					cornerB: {
-						latitude: 31.6216944444,
-						longitude: -106.4481666667,
-					},
-				},
-				{
-					name: "Pasillo Cafeteria",
-					// cornerA: {
-					// 	latitude: 31.621418,
-					// 	longitude: -106.448181,
-					// },
-					// cornerB: {
-					// 	latitude: 31.621449,
-					// 	longitude: -106.448125,
-					// },
-					cornerA: {
-						latitude: 31.621539,
-						longitude: -106.448143,
-					},
-					cornerB: {
-						latitude: 31.6215320,
-						longitude: -106.448161,
-					},
-				},
-				// {
-				// 	name: "Pasillo Cafeteria",
-				// 	cornerA: {
-				// 		latitude: 31.6214722222, // 31°37'17.3"N
-				// 		longitude: -106.4481111111, // 106°26'53.2"W
-				// 	},
-				// 	cornerB: {
-				// 		latitude: 31.6215, // 31°37'17.4"N
-				// 		longitude: -106.4481111111, // 106°26'53.2"W
-				// 	},
-				// },
-			]
-				.map((area) => ({
-					name: area.name,
-					minLatitude: Math.min(area.cornerA.latitude, area.cornerB.latitude),
-					maxLatitude: Math.max(area.cornerA.latitude, area.cornerB.latitude),
-					minLongitude: Math.min(area.cornerA.longitude, area.cornerB.longitude),
-					maxLongitude: Math.max(area.cornerA.longitude, area.cornerB.longitude),
-				}))
-				.map((area) => expandBoxByMeters(area, CHECK_IN_MARGIN_METERS));
+			const CHECK_IN_AREAS =
+				CHECK_IN_AREA_DEFINITIONS.map((area) => {
+					// POLYGON and RADIUS don't require conversion.
+					if (
+						area.type === "POLYGON" ||
+						area.type === "RADIUS"
+					) {
+						return area;
+					}
+
+					// Existing BOX behavior.
+					const box = {
+						type: "BOX",
+						name: area.name,
+
+						minLatitude: Math.min(
+							area.cornerA.latitude,
+							area.cornerB.latitude,
+						),
+
+						maxLatitude: Math.max(
+							area.cornerA.latitude,
+							area.cornerB.latitude,
+						),
+
+						minLongitude: Math.min(
+							area.cornerA.longitude,
+							area.cornerB.longitude,
+						),
+
+						maxLongitude: Math.max(
+							area.cornerA.longitude,
+							area.cornerB.longitude,
+						),
+					};
+
+					return expandBoxByMeters(
+						box,
+						CHECK_IN_MARGIN_METERS,
+					);
+				});
 
 			const GEO_BYPASS_EMP_IDS = new Set([
 				"900874",
@@ -6334,14 +7814,38 @@ const resolvers = {
 				"900951",
 			]);
 
-			function findMatchingCheckInArea({ latitude, longitude, areas }) {
-				return areas.find((area) =>
-					isInsideBoxRange({
-						latitude,
-						longitude,
-						box: area,
-					}),
-				);
+			function findMatchingCheckInArea({
+				latitude,
+				longitude,
+				areas,
+			}) {
+				return areas.find((area) => {
+					switch (area.type) {
+						case "POLYGON":
+							return isInsidePolygonRange({
+								latitude,
+								longitude,
+								polygon: area,
+							});
+
+						case "RADIUS":
+							return isInsideRadiusRange({
+								latitude,
+								longitude,
+								area,
+							});
+
+						case "BOX":
+							return isInsideBoxRange({
+								latitude,
+								longitude,
+								box: area,
+							});
+
+						default:
+							return false;
+					}
+				});
 			}
 
 			const MAX_LOCATION_ACCURACY_METERS = 75;
@@ -7440,6 +8944,11 @@ const resolvers = {
 			return "Done";
 		},
 		requestAbsence: requireAuth(async (_, { input }, { user }) => {
+			return {
+				success: false,
+				message: "Las solicitudes de ausencia están temporalmente deshabilitadas.",
+			};
+
 			const REQUEST_TYPE = {
 				PERMISO: 1,
 				VACACIONES: 2,
