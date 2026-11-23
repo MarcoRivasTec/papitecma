@@ -79,7 +79,20 @@
 						<p style="font-size: 11pt; margin-top: 12pt">
 							{{ciudad}}, {{entidad}}, México
 						</p>
-						{{#if (notEq id_proyecto "H09")}}
+
+						{{#if (eq id_proyecto "H75")}} 
+						<p style="margin-top: 0pt">
+							Tel:&nbsp;<strong>656 619 7439</strong>
+						</p>
+						{{else}}{{#if (eq id_proyecto "H09")}}
+						<p style="margin-top: 0pt"></p>
+						{{else}}
+						<p style="margin-top: 10pt">
+							Tel:&nbsp;<strong>656 649 1000</strong>
+						</p>
+						{{/if}}{{/if}}
+
+						<!-- {{#if (notEq id_proyecto "H09")}}
 						<p style="margin-top: 10pt">
 							Tel:&nbsp;<strong>656 649 1000</strong>
 						</p>
@@ -88,7 +101,7 @@
 						<p style="margin-top: 0pt">
 							Tel:&nbsp;<strong>656 619 7439</strong>
 						</p>
-						{{/if}}
+						{{/if}} -->
 						<p style="font-size: 10pt; margin-top: 12pt">
 							RFC:&nbsp;<strong>{{rfc_razon}}</strong>
 						</p>
